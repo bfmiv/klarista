@@ -1,0 +1,10 @@
+.git/
+.vscode/
+bin/
+
+test/fixtures/*/tf/
+test/fixtures/*/kubeconfig.yaml
+*.log
+.DS_Store
+Dockerfile*
+Makefile

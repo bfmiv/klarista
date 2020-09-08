@@ -1,0 +1,9 @@
+.idea/
+.vscode/
+bin/
+
+test/fixtures/*/*
+!test/fixtures/*/input.tfvars
+
+*.log
+.DS_Store

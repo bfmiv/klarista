@@ -1,0 +1,18 @@
+{{ range .cluster_availability_zones }}
+---
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  labels:
+    kops.k8s.io/cluster: {{ $.cluster_name }}
+  name: master-{{ . }}
+spec:
+  role: Master
+  kubernetesVersion: {{ $.k8s_version }}
+  image: {{ $.cluster_image }}
+  machineType: {{ $.cluster_master_size }}
+  maxSize: 1
+  minSize: 1
+  subnets:
+  - private-{{ . }}
+{{ end }}

@@ -1,0 +1,137 @@
+---
+apiVersion: kops.k8s.io/v1alpha2
+kind: Cluster
+metadata:
+  name: {{ .cluster_name }}
+spec:
+  additionalPolicies:
+    node: |
+      [
+          {
+              "Effect": "Allow",
+              "Action": [
+                  "route53:ListHostedZones",
+                  "route53:ListResourceRecordSets"
+              ],
+              "Resource": [
+                  "*"
+              ]
+          },
+          {
+              "Effect": "Allow",
+              "Action": "route53:GetChange",
+              "Resource": [
+                  "arn:aws:route53:::change/*"
+              ]
+          },
+          {
+              "Effect": "Allow",
+              "Action": [
+                  "route53:ChangeResourceRecordSets",
+                  "route53:ListResourceRecordSets"
+              ],
+              "Resource": [
+                  "arn:aws:route53:::hostedzone/{{ .cluster_public_hosted_zone_id }}"
+              ]
+          },
+          {
+              "Effect": "Allow",
+              "Action": [
+                  "autoscaling:DescribeAutoScalingGroups",
+                  "autoscaling:DescribeAutoScalingInstances",
+                  "autoscaling:DescribeLaunchConfigurations",
+                  "autoscaling:DescribeTags"
+              ],
+              "Resource": [
+                  "*"
+              ]
+          },
+          {
+              "Effect": "Allow",
+              "Action": [
+                  "autoscaling:SetDesiredCapacity",
+                  "autoscaling:TerminateInstanceInAutoScalingGroup"
+              ],
+              "Resource": [
+                  "arn:aws:autoscaling:{{ .aws_region }}:{{ .aws_account_id }}:autoScalingGroup:*:autoScalingGroupName/*.{{ .cluster_name }}"
+              ]
+          }
+          {{ if gt (len .cluster_additional_policies_node) 0 }}
+            {{ range $_, $policy := .cluster_additional_policies_node }}
+              ,{{ $policy | toJson }}
+            {{ end }}
+          {{ end }}
+      ]
+  api:
+    loadBalancer:
+      type: Public
+      sslCertificate: {{ .k8s_api_certificate_arn }}
+  authentication:
+    aws: {}
+  authorization:
+    rbac: {}
+  channel: stable
+  cloudProvider: aws
+  configBase: s3://{{ .kops_state_bucket }}/{{ .cluster_name }}
+  dnsZone: {{ .cluster_public_hosted_zone_id }}
+  # Create one etcd member per AZ
+  etcdClusters:
+  - etcdMembers:
+  {{ range $i, $az := .cluster_availability_zones }}
+    - encryptedVolume: true
+      instanceGroup: master-{{ . }}
+      name: {{ . | replace $.aws_region "" }}
+  {{ end }}
+    name: main
+  - etcdMembers:
+  {{ range $i, $az := .cluster_availability_zones }}
+    - encryptedVolume: true
+      instanceGroup: master-{{ . }}
+      name: {{ . | replace $.aws_region "" }}
+  {{ end }}
+    name: events
+  iam:
+    allowContainerRegistry: true
+    legacy: false
+  kubeAPIServer:
+    # Basic auth needs to be enabled for now due to a bug RE accessing k8s via ELB
+    # See https://github.com/kubernetes/kops/issues/9741#issuecomment-673046059
+    disableBasicAuth: false
+  kubeDNS:
+    provider: CoreDNS
+  kubelet:
+    anonymousAuth: false
+  kubernetesApiAccess:
+  {{ range .k8s_api_ingress_sources }}
+  - {{ . }}
+  {{ end }}
+  kubernetesVersion: {{ .k8s_version }}
+  masterInternalName: api.internal.{{ .cluster_name }}
+  masterPublicName: api.{{ .cluster_name }}
+  networkCIDR: {{ .cluster_vpc_cidr }}
+  networkID: {{ .cluster_vpc_id }}
+  networking:
+    calico: {}
+  nonMasqueradeCIDR: 100.64.0.0/10
+  subnets:
+  # Private subnets (one per AZ)
+  {{ range $i, $id := .cluster_private_subnet_ids }}
+  - id: {{ . }}
+    name: private-{{ index $.cluster_availability_zones $i }}
+    type: Private
+    zone: {{ index $.cluster_availability_zones $i }}
+    egress: {{ index $.cluster_nat_gateway_ids $i }}
+  {{ end }}
+  # Public subnets (one per AZ)
+  {{ range $i, $id := .cluster_public_subnet_ids }}
+  - id: {{ . }}
+    name: {{ index $.cluster_availability_zones $i }}-utility
+    type: Utility
+    zone: {{ index $.cluster_availability_zones $i }}
+  {{ end }}
+  sshKeyName: ""
+  topology:
+    dns:
+      type: Public
+    masters: private
+    nodes: private
