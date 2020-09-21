@@ -11,6 +11,7 @@ spec:
               "Effect": "Allow",
               "Action": [
                   "route53:ListHostedZones",
+                  "route53:ListHostedZonesByName",
                   "route53:ListResourceRecordSets"
               ],
               "Resource": [
