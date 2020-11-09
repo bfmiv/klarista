@@ -3,8 +3,8 @@ aws_region = null
 aws_authorized_accounts = []
 
 # See https://github.com/kubernetes/kops/blob/master/docs/operations/images.md
-cluster_image = "ubuntu/ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-20200817"
-k8s_version = "1.18.8"
+cluster_image = "ubuntu/ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-20201026"
+k8s_version = "1.18.10"
 
 k8s_api_ingress_sources = []
 

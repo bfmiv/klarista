@@ -32,11 +32,11 @@ make install
 ```bash
 export CLUSTER=dev2-lavender.bfmiv.com
 
-cd test/fixtures
+cd test/fixtures/$CLUSTER
 
 klarista create $CLUSTER --yes
 
-export KUBECONFIG=$CLUSTER/kubeconfig.yaml
+export KUBECONFIG=`klarista get $CLUSTER kubeconfig.yaml`
 
 kubectl get pod --all-namespaces
 

@@ -19,36 +19,6 @@ data "aws_route53_zone" "public" {
   name = "${local.cluster_dns_zone}."
 }
 
-resource "aws_s3_bucket" "kops_state" {
-  bucket        = local.kops_state_bucket
-  acl           = "private"
-  force_destroy = true
-
-  versioning {
-    enabled = true
-  }
-
-  lifecycle_rule {
-    enabled = true
-
-    noncurrent_version_expiration {
-      days = 90
-    }
-  }
-
-  tags = merge(local.tags, {
-    Name = local.kops_state_bucket
-  })
-}
-
-resource "aws_s3_bucket_public_access_block" "kops_state" {
-  bucket                  = aws_s3_bucket.kops_state.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
 resource "aws_acm_certificate" "k8s_api" {
   domain_name       = "api.${var.cluster_name}"
   validation_method = "DNS"

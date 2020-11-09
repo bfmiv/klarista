@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/spf13/cast"
 	"github.com/spf13/cobra"
@@ -14,31 +15,22 @@ import (
 
 // destroyCmd represents the destroy command
 var destroyCmd = &cobra.Command{
-	Use:   "destroy [name]",
+	Use:   "destroy <name>",
 	Short: "Destroy an existing cluster",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
-		modulePath := path.Join(name, "tf")
+		out := path.Join(os.TempDir(), name)
 
 		yes, _ := cmd.Flags().GetBool("yes")
 		autoFlags := getAutoFlags(yes)
 
 		Logger.Infof(`Destroying cluster "%s"`, name)
 
-		useWorkDir(modulePath, func() {
-			inputFileInfo, err := ioutil.ReadDir("inputs")
-			if err != nil {
-				panic(err)
-			}
+		stateBucketName := strings.ReplaceAll(name, ".", "-") + "-state"
 
-			inputIds := cast.ToStringSlice(
-				funk.Map(inputFileInfo, func(file os.FileInfo) string {
-					return file.Name()
-				}),
-			)
-
-			outputBytes, err := ioutil.ReadFile("output.json")
+		useWorkDir(path.Join(out, "tf_state"), func() {
+			outputBytes, err := getOutputJSONBytes()
 			if err != nil {
 				panic(err)
 			}
@@ -50,44 +42,64 @@ var destroyCmd = &cobra.Command{
 			}
 
 			awsProfile := output["aws_profile"].(string)
-			kopsStateBucket := "s3://" + output["kops_state_bucket"].(string)
+			awsRegion := output["aws_region"].(string)
 
 			if err = os.Setenv("AWS_PROFILE", awsProfile); err != nil {
 				panic(err)
 			}
 
+			if err = os.Setenv("AWS_REGION", awsRegion); err != nil {
+				panic(err)
+			}
+
+			if err = os.Setenv("KOPS_STATE_STORE", "s3://"+stateBucketName+"/kops"); err != nil {
+				panic(err)
+			}
+		})
+
+		useRemoteState(name, stateBucketName, func() {
+			inputFileInfo, err := ioutil.ReadDir("tf/inputs")
+			if err != nil {
+				panic(err)
+			}
+
+			inputIds := cast.ToStringSlice(
+				funk.Map(inputFileInfo, func(file os.FileInfo) string {
+					return file.Name()
+				}),
+			)
+
 			if err = os.Setenv("CLUSTER", name); err != nil {
 				panic(err)
 			}
 
-			if err = os.Setenv("KOPS_STATE_STORE", kopsStateBucket); err != nil {
+			if err = os.Setenv("KUBECONFIG", path.Join(out, "kubeconfig.yaml")); err != nil {
 				panic(err)
 			}
 
-			if err = os.Setenv("KUBECONFIG", path.Join("..", "kubeconfig.yaml")); err != nil {
-				panic(err)
-			}
+			useWorkDir("tf", func() {
+				shell("terraform", "init")
 
-			shell("terraform", "init")
+				shell(
+					"bash",
+					"-c",
+					fmt.Sprintf(
+						`
+							terraform destroy \
+								-compact-warnings \
+								-var "cluster_name=%s" \
+								-var "state_bucket_name=%s" \
+								%s \
+								%s
+						`,
+						name,
+						stateBucketName,
+						autoFlags,
+						getVarFileFlags(inputIds),
+					),
+				)
+			})
 
-			// Destroy everything except the kops state bucket
-			shell(
-				"bash",
-				"-c",
-				fmt.Sprintf(
-					`
-						terraform destroy %s \
-							-var "cluster_name=%s" \
-							%s \
-							$(terraform state list | grep -v kops_state | awk '{ print "-target=" $0 }' | tr '\n' ' ')
-					`,
-					autoFlags,
-					name,
-					getVarFileFlags(inputIds),
-				),
-			)
-
-			// Destroy kops cluster
 			shell(
 				"bash",
 				"-c",
@@ -98,34 +110,31 @@ var destroyCmd = &cobra.Command{
 				`,
 			)
 
-			// Finish destroying
-			shell(
-				"bash",
-				"-c",
-				fmt.Sprintf(
-					`
-						terraform destroy \
-							-auto-approve \
-							-var "cluster_name=%s" \
-							%s
-					`,
-					name,
-					getVarFileFlags(inputIds),
-				),
-			)
-		})
+			useWorkDir("tf_state", func() {
+				shell("terraform", "init")
 
-		// Cleanup
-		shell(
-			"bash",
-			"-c",
-			fmt.Sprintf(
-				`rm -rf "%s" "%s" "%s"`,
-				modulePath,
-				path.Join(path.Dir(modulePath), "kubeconfig.yaml"),
-				path.Join(path.Dir(modulePath), "*.tfstate*"),
-			),
-		)
+				shell(
+					"bash",
+					"-c",
+					fmt.Sprintf(
+						`
+							terraform destroy \
+								-compact-warnings \
+								-var "cluster_name=%s" \
+								-var "state_bucket_name=%s" \
+								%s \
+								%s
+						`,
+						name,
+						stateBucketName,
+						autoFlags,
+						getVarFileFlags(inputIds),
+					),
+				)
+			})
+
+			shell("bash", "-c", "rm -rf *")
+		})
 	},
 }
 
