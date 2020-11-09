@@ -356,14 +356,9 @@ var createCmd = &cobra.Command{
 				"bash",
 				"-c",
 				`
-					if [ -f kubeconfig.secret.yaml ]; then
-						exit 0
-					fi
-
-					# Copy the original kubeconfig.yaml => kubeconfig.secret.yaml
-					cp kubeconfig.yaml kubeconfig.secret.yaml
-
 					# Remove default users from kubeconfig
+					# Original kubeconfig can be recovered with kops
+					# See https://kops.sigs.k8s.io/cli/kops_export_kubecfg/
 					kubectl config unset users.$CLUSTER
 					kubectl config unset users.$CLUSTER-basic-auth
 				`,
