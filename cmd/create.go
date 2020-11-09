@@ -7,11 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/gobwas/glob"
 	"github.com/spf13/cobra"
 )
 
@@ -22,129 +20,38 @@ var createCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
+		localStateDir := path.Join(os.TempDir(), name)
+		stateBucketName := strings.ReplaceAll(name, ".", "-") + "-state"
+
+		fast, _ := cmd.Flags().GetBool("fast")
+		yes, _ := cmd.Flags().GetBool("yes")
+		autoFlags := getAutoFlags(yes)
 
 		pwd, err := os.Getwd()
 		if err != nil {
 			panic(err)
 		}
 
-		inputs, _ := cmd.Flags().GetStringArray("input")
-		if !cmd.Flags().Changed("input") {
-			inputs = []string{
-				"input.tfvars",
-			}
-		}
-		for i, input := range inputs {
-			if !filepath.IsAbs(input) {
-				inputs[i] = path.Join(pwd, input)
-			}
-		}
-
-		out, _ := cmd.Flags().GetString("out")
-		if !cmd.Flags().Changed("out") {
-			out = path.Join(os.TempDir(), name)
-		}
-
-		if err = os.MkdirAll(out, 0755); err != nil {
+		if err = os.MkdirAll(localStateDir, 0755); err != nil {
 			panic(err)
 		}
 
-		fast, _ := cmd.Flags().GetBool("fast")
-
-		yes, _ := cmd.Flags().GetBool("yes")
-		autoFlags := getAutoFlags(yes)
-
-		// These assets will only be written if they do not already exist
-		politeAssets := map[string]bool{
-			"kubeconfig.yaml":            true,
-			"tf/terraform.tfstate":       true,
-			"tf_state/terraform.tfstate": true,
+		if !rootCmd.PersistentFlags().Changed("input") {
+			inputs = getInitialInputs(localStateDir)
 		}
 
-		writeAssets := func(args ...interface{}) {
-			var pattern string
-			if len(args) == 1 {
-				pattern = args[0].(string)
-			}
-
-			var g glob.Glob
-			if pattern != "" {
-				g = glob.MustCompile(pattern)
-			}
-
-			useWorkDir(pwd, func() {
-				for _, file := range assets.List() {
-					fp := path.Join(out, file)
-
-					if g != nil && !g.Match(file) {
-						Logger.Warnf("Skipping asset %s that does not match glob %s", file, pattern)
-						continue
-					}
-
-					if politeAssets[file] {
-						_, err := os.Stat(fp)
-						if os.IsNotExist(err) {
-							// noop
-						} else {
-							// The file exists; continue
-							continue
-						}
-					}
-
-					Logger.Debugf("Writing asset %s", file)
-
-					data, err := assets.Find(file)
-					if err != nil {
-						panic(err)
-					}
-
-					if err = os.MkdirAll(path.Dir(fp), 0755); err != nil {
-						panic(err)
-					}
-
-					if err = ioutil.WriteFile(fp, data, 0644); err != nil {
-						panic(err)
-					}
-				}
-			})
-		}
+		writeAssets := createAssetWriter(pwd, localStateDir, assets)
+		processInputs := createInputProcessor(pwd, localStateDir, assets, writeAssets)
 
 		Logger.Infof(`Applying changes to cluster "%s"`, name)
-		Logger.Infof(
-			"Reading input from [\n\t%s,\n]",
-			strings.Join(inputs, ",\n\t"),
-		)
 
-		processInputs := func(tfinputs []string) []string {
-			_inputIds := []string{}
-			useWorkDir(out, func() {
-				for i, input := range tfinputs {
-					inputBytes, err := ioutil.ReadFile(input)
-					if err != nil {
-						panic(err)
-					}
-					_inputIds = append(_inputIds, fmt.Sprintf("%03d.tfvars", i))
-					assets.AddBytes(
-						path.Join("tf_state", "inputs", _inputIds[i]),
-						inputBytes,
-					)
-					assets.AddBytes(
-						path.Join("tf", "inputs", _inputIds[i]),
-						inputBytes,
-					)
-				}
-				writeAssets("*/inputs/*")
-			})
-			return _inputIds
-		}
+		writeAssets("{tf_vars,tf_state}/*")
 
 		inputIds := processInputs(inputs)
 
-		stateBucketName := strings.ReplaceAll(name, ".", "-") + "-state"
+		setAwsEnv(localStateDir, inputIds)
 
-		writeAssets("tf_state/*")
-
-		useWorkDir(path.Join(out, "tf_state"), func() {
+		useWorkDir(path.Join(localStateDir, "tf_state"), func() {
 			shell("terraform", "init")
 
 			shell(
@@ -157,28 +64,6 @@ var createCmd = &cobra.Command{
 					getVarFileFlags(inputIds),
 				),
 			)
-
-			outputBytes, err := getOutputJSONBytes()
-			if err != nil {
-				panic(err)
-			}
-
-			var output map[string]interface{}
-			err = json.Unmarshal(outputBytes, &output)
-			if err != nil {
-				panic(err)
-			}
-
-			awsProfile := output["aws_profile"].(string)
-			awsRegion := output["aws_region"].(string)
-
-			if err = os.Setenv("AWS_PROFILE", awsProfile); err != nil {
-				panic(err)
-			}
-
-			if err = os.Setenv("AWS_REGION", awsRegion); err != nil {
-				panic(err)
-			}
 		})
 
 		writeAssets()
@@ -231,7 +116,7 @@ var createCmd = &cobra.Command{
 					panic(err)
 				}
 
-				if err = os.Setenv("KUBECONFIG", path.Join(out, "kubeconfig.yaml")); err != nil {
+				if err = os.Setenv("KUBECONFIG", path.Join(localStateDir, "kubeconfig.yaml")); err != nil {
 					panic(err)
 				}
 
@@ -294,7 +179,7 @@ var createCmd = &cobra.Command{
 
 				useWorkDir(pwd, func() {
 					// Read the generated kops terraform
-					kopsOutputFile := path.Join(out, "tf", "kubernetes.tf.json")
+					kopsOutputFile := path.Join(localStateDir, "tf", "kubernetes.tf.json")
 					kopsJSONBytes, err := ioutil.ReadFile(kopsOutputFile)
 					if err != nil {
 						panic(err)
@@ -466,15 +351,32 @@ var createCmd = &cobra.Command{
 			}
 		})
 
+		useRemoteState(name, stateBucketName, func() {
+			shell(
+				"bash",
+				"-c",
+				`
+					if [ -f kubeconfig.secret.yaml ]; then
+						exit 0
+					fi
+
+					# Copy the original kubeconfig.yaml => kubeconfig.secret.yaml
+					cp kubeconfig.yaml kubeconfig.secret.yaml
+
+					# Remove default users from kubeconfig
+					kubectl config unset users.$CLUSTER
+					kubectl config unset users.$CLUSTER-basic-auth
+				`,
+			)
+		})
+
 		Logger.Info("☕️ Your cluster is ready!")
-		Logger.Infof(`Output written to "%s"`, out)
+		Logger.Infof(`Output written to "%s"`, localStateDir)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(createCmd)
 	createCmd.Flags().Bool("fast", false, "Apply updates as quickly as possible. This is not safe in production")
-	createCmd.Flags().StringArrayP("input", "i", []string{"input.tfvars"}, "Path(s) to the cluster input file(s)")
-	createCmd.Flags().StringP("out", "o", "[name]", "Path to the klarista output directory")
 	createCmd.Flags().Bool("yes", false, "Skip confirmation")
 }

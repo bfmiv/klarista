@@ -36,9 +36,9 @@ cd test/fixtures/$CLUSTER
 
 klarista create $CLUSTER --yes
 
-export KUBECONFIG=`klarista get $CLUSTER kubeconfig.yaml`
+export KUBECONFIG=`klarista get $CLUSTER kubeconfig.yaml --path`
 
-kubectl get pod --all-namespaces
+kubectl get pod -A
 
 klarista destroy $CLUSTER --yes
 

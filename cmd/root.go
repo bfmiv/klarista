@@ -4,6 +4,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var inputs []string
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:     "klarista",
@@ -17,4 +19,8 @@ func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		Logger.Error(err)
 	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringArrayVarP(&inputs, "input", "i", []string{}, "Path(s) to the cluster input file(s)")
 }

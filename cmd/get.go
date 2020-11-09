@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -20,39 +19,32 @@ var getCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
 		requestedPath := args[1]
-		out := path.Join(os.TempDir(), name)
+		localStateDir := path.Join(os.TempDir(), name)
 		pathOnly, _ := cmd.Flags().GetBool("path")
-
 		stateBucketName := strings.ReplaceAll(name, ".", "-") + "-state"
 
-		useWorkDir(path.Join(out, "tf_state"), func() {
-			outputBytes, err := getOutputJSONBytes()
-			if err != nil {
-				panic(err)
-			}
+		pwd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
 
-			var output map[string]interface{}
-			err = json.Unmarshal(outputBytes, &output)
-			if err != nil {
-				panic(err)
-			}
+		if !rootCmd.PersistentFlags().Changed("input") {
+			inputs = getInitialInputs(localStateDir)
+		}
 
-			awsProfile := output["aws_profile"].(string)
-			awsRegion := output["aws_region"].(string)
+		writeAssets := createAssetWriter(pwd, localStateDir, assets)
+		processInputs := createInputProcessor(pwd, localStateDir, assets, writeAssets)
 
-			if err = os.Setenv("AWS_PROFILE", awsProfile); err != nil {
-				panic(err)
-			}
+		writeAssets("tf_vars/*")
 
-			if err = os.Setenv("AWS_REGION", awsRegion); err != nil {
-				panic(err)
-			}
-		})
+		inputIds := processInputs(inputs)
+
+		setAwsEnv(localStateDir, inputIds)
 
 		var result string
-		var err error
 
 		useRemoteState(name, stateBucketName, func() {
+			var err error
 			if pathOnly {
 				result, err = filepath.Abs(requestedPath)
 				if err != nil {
