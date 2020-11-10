@@ -82,17 +82,17 @@ var destroyCmd = &cobra.Command{
 						getVarFileFlags(inputIds),
 					),
 				)
-			})
 
-			shell(
-				"bash",
-				"-c",
-				`
-					if kops get cluster $CLUSTER > /dev/null; then
-						kops delete cluster $CLUSTER --yes
-					fi
-				`,
-			)
+				shell(
+					"bash",
+					"-c",
+					`
+						if kops get cluster $CLUSTER > /dev/null; then
+							kops delete cluster $CLUSTER --yes
+						fi
+					`,
+				)
+			})
 
 			useWorkDir("tf_state", func() {
 				shell("terraform", "init")
