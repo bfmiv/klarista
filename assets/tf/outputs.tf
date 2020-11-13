@@ -10,6 +10,10 @@ output "cluster_name" {
   value = var.cluster_name
 }
 
+output "state_bucket_name" {
+  value = var.state_bucket_name
+}
+
 output "k8s_version" {
   value = var.k8s_version
 }
@@ -68,10 +72,6 @@ output "cluster_nat_gateway_ids" {
 
 output "cluster_availability_zones" {
   value = module.cluster_vpc.azs
-}
-
-output "kops_state_bucket" {
-  value = aws_s3_bucket.kops_state.bucket
 }
 
 output "k8s_api_certificate_arn" {

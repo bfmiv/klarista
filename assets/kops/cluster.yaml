@@ -73,7 +73,7 @@ spec:
     rbac: {}
   channel: stable
   cloudProvider: aws
-  configBase: s3://{{ .kops_state_bucket }}/{{ .cluster_name }}
+  configBase: s3://{{ .state_bucket_name }}/kops/{{ .cluster_name }}
   dnsZone: {{ .cluster_public_hosted_zone_id }}
   # Create one etcd member per AZ
   etcdClusters:

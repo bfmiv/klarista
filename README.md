@@ -32,13 +32,13 @@ make install
 ```bash
 export CLUSTER=dev2-lavender.bfmiv.com
 
-cd test/fixtures
+cd test/fixtures/$CLUSTER
 
 klarista create $CLUSTER --yes
 
-export KUBECONFIG=$CLUSTER/kubeconfig.yaml
+export KUBECONFIG=`klarista get $CLUSTER kubeconfig.yaml --path`
 
-kubectl get pod --all-namespaces
+kubectl get pod -A
 
 klarista destroy $CLUSTER --yes
 
