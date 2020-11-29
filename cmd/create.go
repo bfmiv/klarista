@@ -151,13 +151,9 @@ var createCmd = &cobra.Command{
 										--format-yaml
 								)
 						`,
-						func() string {
-							if isNewCluster {
-								// --force is required to replace a cluster that doesn't exist
-								return "--force"
-							}
-							return ""
-						}(),
+						// --force is required to replace a cluster that doesn't exist
+						// or to create a new node group in an existing cluster
+						"--force",
 					),
 				)
 
