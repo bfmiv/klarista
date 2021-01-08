@@ -11,7 +11,6 @@ require (
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cast v1.3.0
 	github.com/spf13/cobra v1.0.0
-	github.com/sqs/goreturns v0.0.0-20181028201513-538ac6014518 // indirect
 	github.com/thanhpk/randstr v1.0.4
 	github.com/thoas/go-funk v0.7.0
 	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect

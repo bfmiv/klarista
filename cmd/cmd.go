@@ -222,6 +222,21 @@ func getOutputJSONBytes() ([]byte, error) {
 	return outputBytes, nil
 }
 
+func getOutputJSON() (map[string]interface{}, error) {
+	outputBytes, err := getOutputJSONBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	var output map[string]interface{}
+	err = json.Unmarshal(outputBytes, &output)
+	if err != nil {
+		return nil, err
+	}
+
+	return output, nil
+}
+
 func setAwsEnv(localStateDir string, inputIds []string) {
 	useWorkDir(path.Join(localStateDir, "tf_vars"), func() {
 		shell(
@@ -233,13 +248,7 @@ func setAwsEnv(localStateDir string, inputIds []string) {
 			),
 		)
 
-		outputBytes, err := getOutputJSONBytes()
-		if err != nil {
-			panic(err)
-		}
-
-		var output map[string]interface{}
-		err = json.Unmarshal(outputBytes, &output)
+		output, err := getOutputJSON()
 		if err != nil {
 			panic(err)
 		}

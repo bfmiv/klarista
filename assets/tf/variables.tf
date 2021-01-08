@@ -62,6 +62,11 @@ variable "cluster_additional_policies_node" {
   default     = []
 }
 
+variable "encryption_key_arn" {
+  type    = string
+  default = null
+}
+
 variable "public_subnets" {
   type = list(object({
     cidr_block        = string
