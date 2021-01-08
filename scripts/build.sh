@@ -19,6 +19,6 @@ for GOARCH in "${arch[@]}"; do
         packr2 build \
             -v \
             -o bin/$NAME \
-            -ldflags="-X 'github.com/bfmiv/klarista/cmd.Version=${KLARISTA_CLI_VERSION}'"
+            -ldflags="-X github.com/bfmiv/klarista/cmd.Version=${KLARISTA_CLI_VERSION}"
     done
 done

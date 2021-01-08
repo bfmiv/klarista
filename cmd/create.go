@@ -187,9 +187,25 @@ var createCmd = &cobra.Command{
 						panic(err)
 					}
 
+					// Enable root volume encryption
+					outputJSON, err := getOutputJSON()
+					if err != nil {
+						panic(err)
+					}
+					kopsResources := kopsJSON["resource"].(map[string]interface{})
+					launchConfigs := kopsResources["aws_launch_configuration"].(map[string]interface{})
+					for _, lc := range launchConfigs {
+						rootVolume := lc.(map[string]interface{})["root_block_device"].(map[string]interface{})
+						rootVolume["encrypted"] = true
+						if outputJSON["encryption_key_arn"] != nil {
+							rootVolume["kms_key_id"] = outputJSON["encryption_key_arn"]
+						}
+					}
+
 					// Remove providers from generated kops terraform
 					// See https://discuss.hashicorp.com/t/terraform-v0-13-0-beta-program/9066/9
 					delete(kopsJSON, "provider")
+
 					// Remove duplicate output
 					delete(kopsJSON["output"].(map[string]interface{}), "cluster_name")
 
