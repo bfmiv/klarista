@@ -74,7 +74,7 @@ var createCmd = &cobra.Command{
 			useWorkDir("tf", func() {
 				writeAssets()
 
-				shell("terraform", "init")
+				shell("terraform", "init", "-upgrade")
 
 				shell(
 					"bash",
@@ -187,27 +187,50 @@ var createCmd = &cobra.Command{
 						panic(err)
 					}
 
+					// Remove duplicate output
+					delete(kopsJSON["output"].(map[string]interface{}), "cluster_name")
+
+					// Remove providers from generated kops terraform
+					// See https://discuss.hashicorp.com/t/terraform-v0-13-0-beta-program/9066/9
+					delete(kopsJSON, "provider")
+
+					// Remove duplicate terraform
+					delete(kopsJSON, "terraform")
+
 					// Enable root volume encryption
 					outputJSON, err := getOutputJSON()
 					if err != nil {
 						panic(err)
 					}
 					kopsResources := kopsJSON["resource"].(map[string]interface{})
-					launchConfigs := kopsResources["aws_launch_configuration"].(map[string]interface{})
-					for _, lc := range launchConfigs {
-						rootVolume := lc.(map[string]interface{})["root_block_device"].(map[string]interface{})
-						rootVolume["encrypted"] = true
-						if outputJSON["encryption_key_arn"] != nil {
-							rootVolume["kms_key_id"] = outputJSON["encryption_key_arn"]
+
+					if kopsResources["aws_launch_configuration"] != nil {
+						// kops <= 1.19
+						launchConfigs := kopsResources["aws_launch_configuration"].(map[string]interface{})
+						for _, lc := range launchConfigs {
+							rootVolume := lc.(map[string]interface{})["root_block_device"].(map[string]interface{})
+							rootVolume["encrypted"] = true
+							if outputJSON["encryption_key_arn"] != nil {
+								rootVolume["kms_key_id"] = outputJSON["encryption_key_arn"]
+							}
+						}
+					} else if kopsResources["aws_launch_template"] != nil {
+						// kops >= 1.20
+						launchTemplates := kopsResources["aws_launch_template"].(map[string]interface{})
+						for _, lt := range launchTemplates {
+							blockDeviceMappings := lt.(map[string]interface{})["block_device_mappings"].([]interface{})
+							for _, bd := range blockDeviceMappings {
+								ebs := bd.(map[string]interface{})["ebs"].([]interface{})
+								for _, vol := range ebs {
+									volume := vol.(map[string]interface{})
+									volume["encrypted"] = true
+									if outputJSON["encryption_key_arn"] != nil {
+										volume["kms_key_id"] = outputJSON["encryption_key_arn"]
+									}
+								}
+							}
 						}
 					}
-
-					// Remove providers from generated kops terraform
-					// See https://discuss.hashicorp.com/t/terraform-v0-13-0-beta-program/9066/9
-					delete(kopsJSON, "provider")
-
-					// Remove duplicate output
-					delete(kopsJSON["output"].(map[string]interface{}), "cluster_name")
 
 					kopsJSONBytes, err = json.MarshalIndent(kopsJSON, "", "  ")
 					if err != nil {
