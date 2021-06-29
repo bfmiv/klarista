@@ -65,6 +65,7 @@ spec:
       ]
   api:
     loadBalancer:
+      class: Network
       type: Public
       sslCertificate: {{ .k8s_api_certificate_arn }}
   authentication:
