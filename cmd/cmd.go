@@ -237,6 +237,10 @@ func getOutputJSON() (map[string]interface{}, error) {
 	return output, nil
 }
 
+func isDebug() bool {
+	return strings.Contains(os.Getenv("DEBUG"), "klarista")
+}
+
 func setAwsEnv(localStateDir string, inputIds []string) {
 	useWorkDir(path.Join(localStateDir, "tf_vars"), func() {
 		shell(

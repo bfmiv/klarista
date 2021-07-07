@@ -72,6 +72,9 @@ spec:
     aws: {}
   authorization:
     rbac: {}
+  certManager:
+    enabled: true
+    managed: false
   channel: stable
   cloudProvider: aws
   configBase: s3://{{ .state_bucket_name }}/kops/{{ .cluster_name }}
@@ -96,13 +99,13 @@ spec:
     allowContainerRegistry: true
     legacy: false
   kubeAPIServer:
-    # Basic auth needs to be enabled for now due to a bug RE accessing k8s via ELB
-    # See https://github.com/kubernetes/kops/issues/9741#issuecomment-673046059
-    disableBasicAuth: false
+    disableBasicAuth: true
   kubeDNS:
     provider: CoreDNS
   kubelet:
     anonymousAuth: false
+    authorizationMode: Webhook
+    authenticationTokenWebhook: true
   kubernetesApiAccess:
   {{ range .k8s_api_ingress_sources }}
   - {{ . }}
@@ -110,6 +113,9 @@ spec:
   kubernetesVersion: {{ .k8s_version }}
   masterInternalName: api.internal.{{ .cluster_name }}
   masterPublicName: api.{{ .cluster_name }}
+  metricsServer:
+    enabled: true
+    insecure: false
   networkCIDR: {{ .cluster_vpc_cidr }}
   networkID: {{ .cluster_vpc_id }}
   networking:
