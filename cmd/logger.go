@@ -24,7 +24,7 @@ func (l *prefixHook) Levels() []log.Level {
 }
 
 func init() {
-	if strings.Contains(os.Getenv("DEBUG"), "klarista") {
+	if isDebug() {
 		log.SetLevel(log.DebugLevel)
 		log.SetReportCaller(true)
 	} else {

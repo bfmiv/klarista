@@ -171,6 +171,12 @@ var createCmd = &cobra.Command{
 					"--target", "terraform",
 					"--out", ".",
 					"--yes",
+					func() string {
+						if isDebug() {
+							return "-v7"
+						}
+						return ""
+					}(),
 				)
 
 				useWorkDir(pwd, func() {
@@ -273,11 +279,17 @@ var createCmd = &cobra.Command{
 						"bash",
 						"-c",
 						fmt.Sprintf(
-							"kops rolling-update cluster %s %s --yes",
+							"kops rolling-update cluster %s %s %s --yes",
 							name,
 							func() string {
 								if fast {
 									return "--cloudonly"
+								}
+								return ""
+							}(),
+							func() string {
+								if isDebug() {
+									return "-v7"
 								}
 								return ""
 							}(),
@@ -287,7 +299,17 @@ var createCmd = &cobra.Command{
 
 				// Wait until the only validation failures are for aws-iam-authenticator
 				for {
-					validateCmd := exec.Command("kops", "validate", "cluster", name, "-o", "json")
+					validateArgs := []string{
+						"validate",
+						"cluster",
+						name,
+						"-o",
+						"json",
+					}
+					if isDebug() {
+						validateArgs = append(validateArgs, "-v7")
+					}
+					validateCmd := exec.Command("kops", validateArgs...)
 					validateBytes, _ := validateCmd.Output()
 
 					var validateJSON map[string]interface{}
