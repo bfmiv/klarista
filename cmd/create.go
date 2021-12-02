@@ -112,7 +112,7 @@ var createCmd = &cobra.Command{
 					panic(err)
 				}
 
-				if err = os.Setenv("KOPS_FEATURE_FLAGS", "+TerraformJSON,-Terraform-0.12"); err != nil {
+				if err = os.Setenv("KOPS_FEATURE_FLAGS", "+TerraformJSON,-TerraformManagedFiles"); err != nil {
 					panic(err)
 				}
 
@@ -203,15 +203,17 @@ var createCmd = &cobra.Command{
 					// Remove duplicate terraform
 					delete(kopsJSON, "terraform")
 
-					// Enable root volume encryption
+					// Get terraform json output
 					outputJSON, err := getOutputJSON()
 					if err != nil {
 						panic(err)
 					}
+
 					kopsResources := kopsJSON["resource"].(map[string]interface{})
 
+					// Enable root volume encryption
+					// kops <= 1.19
 					if kopsResources["aws_launch_configuration"] != nil {
-						// kops <= 1.19
 						launchConfigs := kopsResources["aws_launch_configuration"].(map[string]interface{})
 						for _, lc := range launchConfigs {
 							rootVolume := lc.(map[string]interface{})["root_block_device"].(map[string]interface{})
@@ -220,8 +222,11 @@ var createCmd = &cobra.Command{
 								rootVolume["kms_key_id"] = outputJSON["encryption_key_arn"]
 							}
 						}
-					} else if kopsResources["aws_launch_template"] != nil {
-						// kops >= 1.20
+					}
+
+					// Enable root volume encryption
+					// kops >= 1.20
+					if kopsResources["aws_launch_template"] != nil {
 						launchTemplates := kopsResources["aws_launch_template"].(map[string]interface{})
 						for _, lt := range launchTemplates {
 							blockDeviceMappings := lt.(map[string]interface{})["block_device_mappings"].([]interface{})
@@ -234,6 +239,18 @@ var createCmd = &cobra.Command{
 										volume["kms_key_id"] = outputJSON["encryption_key_arn"]
 									}
 								}
+							}
+						}
+					}
+
+					// Remove extraneous type property
+					// kops >= 1.22
+					if kopsResources["aws_route53_record"] != nil {
+						route53Records := kopsResources["aws_route53_record"].(map[string]interface{})
+						for _, r := range route53Records {
+							if r.(map[string]interface{})["alias"] != nil {
+								alias := r.(map[string]interface{})["alias"].(map[string]interface{})
+								delete(alias, "type")
 							}
 						}
 					}
