@@ -386,11 +386,10 @@ func useTempDir(args ...interface{}) {
 	})
 }
 
-func useRemoteState(clusterName, bucket string, cb func()) {
+func useRemoteState(clusterName, bucket string, write bool, cb func()) {
 	remoteStateKey := "klarista.state.tar"
 
 	sess := session.Must(session.NewSession())
-	uploader := s3manager.NewUploader(sess)
 	downloader := s3manager.NewDownloader(sess)
 
 	useTempDir(func(stateTmpDir string) {
@@ -434,6 +433,10 @@ func useRemoteState(clusterName, bucket string, cb func()) {
 			}
 
 			defer func() {
+				if !write {
+					return
+				}
+
 				type ArchiveElement struct {
 					Body    []byte
 					ModTime time.Time
@@ -506,6 +509,8 @@ func useRemoteState(clusterName, bucket string, cb func()) {
 				}
 
 				Logger.Infof("Writing state to s3://%s/%s", bucket, remoteStateKey)
+
+				uploader := s3manager.NewUploader(sess)
 
 				result, err := uploader.Upload(&s3manager.UploadInput{
 					Bucket: aws.String(bucket),

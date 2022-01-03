@@ -51,26 +51,28 @@ var createCmd = &cobra.Command{
 
 		setAwsEnv(localStateDir, inputIds)
 
-		useWorkDir(path.Join(localStateDir, "tf_state"), func() {
-			shell("terraform", "init")
+		useRemoteState(name, stateBucketName, true, func() {
+			useWorkDir(path.Join(localStateDir, "tf_state"), func() {
+				shell("terraform", "init")
 
-			shell(
-				"bash",
-				"-c",
-				fmt.Sprintf(
-					`terraform apply -auto-approve -compact-warnings -var "cluster_name=%s" -var "state_bucket_name=%s" %s`,
-					name,
-					stateBucketName,
-					getVarFileFlags(inputIds),
-				),
-			)
+				shell(
+					"bash",
+					"-c",
+					fmt.Sprintf(
+						`terraform apply -auto-approve -compact-warnings -var "cluster_name=%s" -var "state_bucket_name=%s" %s`,
+						name,
+						stateBucketName,
+						getVarFileFlags(inputIds),
+					),
+				)
+			})
 		})
 
 		writeAssets()
 
 		Logger.Infof(`Writing output to "s3://%s"`, stateBucketName)
 
-		useRemoteState(name, stateBucketName, func() {
+		useRemoteState(name, stateBucketName, true, func() {
 			useWorkDir("tf", func() {
 				writeAssets()
 
@@ -425,7 +427,7 @@ var createCmd = &cobra.Command{
 			}
 		})
 
-		useRemoteState(name, stateBucketName, func() {
+		useRemoteState(name, stateBucketName, true, func() {
 			shell(
 				"bash",
 				"-c",
