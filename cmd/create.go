@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path"
 	"strings"
 	"time"
@@ -316,40 +315,69 @@ var createCmd = &cobra.Command{
 					)
 				}
 
-				// Wait until the only validation failures are for aws-iam-authenticator
+				adminKubeconfigPath := path.Join(localStateDir, ".kubeconfig.admin.yaml")
+
+				// Export the cluster kubeconfig with temporary admin creds
+				shell(
+					"kops",
+					"export",
+					"kubeconfig",
+					"--admin",
+					"--kubeconfig",
+					adminKubeconfigPath,
+				)
+
+				// Wait until the only remaining validation failures are expected
 				for {
-					validateArgs := []string{
+					var validateBytes []byte
+					validateArgs := []interface{}{
 						"validate",
 						"cluster",
 						name,
 						"-o",
 						"json",
+						"--kubeconfig",
+						adminKubeconfigPath,
 					}
 					if isDebug() {
 						validateArgs = append(validateArgs, "-v7")
 					}
-					validateCmd := exec.Command("kops", validateArgs...)
-					validateBytes, _ := validateCmd.Output()
+					shell(
+						"kops",
+						append(
+							validateArgs,
+							func(err error) {
+								Logger.Warn(err)
+							},
+							func(output []byte) {
+								validateBytes = output
+							},
+						)...
+					)
 
 					var validateJSON map[string]interface{}
 					json.Unmarshal(validateBytes, &validateJSON)
 
 					if validateJSON != nil {
+						if isDebug() {
+							Logger.Debug(FormatStruct(validateJSON))
+						}
+
 						if validateJSON["failures"] == nil {
 							break
 						}
 
 						failures := validateJSON["failures"].([]interface{})
-						iamAuthenticatorFailureCount := 0
+						expectedFailureCount := 0
 
 						for _, f := range failures {
 							failure := f.(map[string]interface{})
 							if strings.HasPrefix(failure["name"].(string), "kube-system/aws-iam-authenticator") {
-								iamAuthenticatorFailureCount++
+								expectedFailureCount++
 							}
 						}
 
-						if len(failures) == iamAuthenticatorFailureCount {
+						if len(failures) == expectedFailureCount {
 							break
 						}
 					}

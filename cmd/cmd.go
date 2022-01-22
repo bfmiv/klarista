@@ -270,11 +270,37 @@ func setAwsEnv(localStateDir string, inputIds []string) {
 	})
 }
 
-func shell(command string, args ...string) {
-	filteredArgs := funk.Compact(args).([]string)
+// ShellErrorCallback - shell error callback function
+type ShellErrorCallback = func(error)
+
+// ShellOutputCallback - shell output callback function
+type ShellOutputCallback = func([]byte)
+
+func shell(command string, args ...interface{}) {
+	var cbError ShellErrorCallback
+	var cbOutput ShellOutputCallback
+	var filteredArgs []string
+
+	for _, v := range args {
+		switch arg := v.(type) {
+		case string:
+			filteredArgs = append(filteredArgs, arg)
+		case ShellErrorCallback:
+			cbError = arg
+		case ShellOutputCallback:
+			cbOutput = arg
+		default:
+			Logger.Warnf("Unknown argument type %t", arg)
+		}
+	}
+
+	filteredArgs = funk.Compact(filteredArgs).([]string)
 	cmd := exec.Command(command, filteredArgs...)
+
 	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stderr
+	if cbOutput == nil {
+		cmd.Stdout = os.Stderr
+	}
 	cmd.Stderr = os.Stderr
 
 	sigs := make(chan os.Signal)
@@ -299,9 +325,21 @@ func shell(command string, args ...string) {
 
 	Logger.Debugf("%s %s", command, strings.Join(filteredArgs, " "))
 
-	err := cmd.Run()
+	var err error
+	if cbOutput != nil {
+		var output []byte
+		output, err = cmd.Output()
+		cbOutput(output)
+	} else {
+		err = cmd.Run()
+	}
+
 	if err != nil {
-		panic(err)
+		if cbError != nil {
+			cbError(err)
+		} else {
+			panic(err)
+		}
 	}
 
 	done <- true
@@ -457,6 +495,10 @@ func useRemoteState(clusterName, bucket string, write bool, cb func()) {
 						}
 					} else {
 						if strings.HasSuffix(info.Name(), ".backup") {
+							return nil
+						}
+
+						if info.Name() == ".kubeconfig.admin.yaml" {
 							return nil
 						}
 
