@@ -113,7 +113,8 @@ spec:
   networkCIDR: {{ .cluster_vpc_cidr }}
   networkID: {{ .cluster_vpc_id }}
   networking:
-    calico: {}
+    calico:
+      typhaReplicas: {{ len .cluster_availability_zones }}
   nonMasqueradeCIDR: 100.64.0.0/10
   subnets:
   # Private subnets (one per AZ)
