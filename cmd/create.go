@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ghodss/yaml"
 	"github.com/spf13/cobra"
 )
 
@@ -117,24 +118,35 @@ var createCmd = &cobra.Command{
 					panic(err)
 				}
 
-				if err = os.Setenv("KUBECONFIG", path.Join(localStateDir, "kubeconfig.yaml")); err != nil {
-					panic(err)
+				adminKubeconfigPath := path.Join(localStateDir, ".kubeconfig.admin.yaml")
+				kubeconfigPath := path.Join(localStateDir, "kubeconfig.yaml")
+
+				// Export the cluster kubeconfig with temporary admin creds
+				exportAdminKubeconfig := func() {
+					shell(
+						"kops",
+						"export",
+						"kubeconfig",
+						name,
+						"--admin",
+						"--kubeconfig",
+						adminKubeconfigPath,
+					)
+					if err = os.Setenv("KUBECONFIG", adminKubeconfigPath); err != nil {
+						panic(err)
+					}
 				}
 
 				var isNewCluster bool
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							Logger.Debugf("Recovered: %s", r)
-							isNewCluster = true
-						}
-					}()
-					shell(
-						"bash",
-						"-c",
-						"kops get cluster $CLUSTER &> /dev/null",
-					)
-				}()
+				shell(
+					"bash",
+					"-c",
+					"kops get cluster $CLUSTER &> /dev/null",
+					func(err error) {
+						Logger.Debug(err)
+						isNewCluster = true
+					},
+				)
 
 				shell(
 					"bash",
@@ -158,6 +170,14 @@ var createCmd = &cobra.Command{
 					),
 				)
 
+				if isNewCluster {
+					if err = os.Setenv("KUBECONFIG", kubeconfigPath); err != nil {
+						panic(err)
+					}
+				} else {
+					exportAdminKubeconfig()
+				}
+
 				shell(
 					"kops",
 					"update",
@@ -179,6 +199,10 @@ var createCmd = &cobra.Command{
 						return ""
 					}(),
 				)
+
+				if isNewCluster {
+					exportAdminKubeconfig()
+				}
 
 				useWorkDir(pwd, func() {
 					// Read the generated kops terraform
@@ -315,18 +339,6 @@ var createCmd = &cobra.Command{
 					)
 				}
 
-				adminKubeconfigPath := path.Join(localStateDir, ".kubeconfig.admin.yaml")
-
-				// Export the cluster kubeconfig with temporary admin creds
-				shell(
-					"kops",
-					"export",
-					"kubeconfig",
-					"--admin",
-					"--kubeconfig",
-					adminKubeconfigPath,
-				)
-
 				// Wait until the only remaining validation failures are expected
 				for {
 					var validateBytes []byte
@@ -336,24 +348,20 @@ var createCmd = &cobra.Command{
 						name,
 						"-o",
 						"json",
-						"--kubeconfig",
-						adminKubeconfigPath,
 					}
 					if isDebug() {
 						validateArgs = append(validateArgs, "-v7")
 					}
-					shell(
-						"kops",
-						append(
-							validateArgs,
-							func(err error) {
-								Logger.Warn(err)
-							},
-							func(output []byte) {
-								validateBytes = output
-							},
-						)...
+					validateArgs = append(
+						validateArgs,
+						func(err error) {
+							Logger.Warn(err)
+						},
+						func(output []byte) {
+							validateBytes = output
+						},
 					)
+					shell("kops", validateArgs...)
 
 					var validateJSON map[string]interface{}
 					json.Unmarshal(validateBytes, &validateJSON)
@@ -399,6 +407,31 @@ var createCmd = &cobra.Command{
 						kubectl apply -f -
 					`,
 				)
+
+				if err = os.Setenv("KUBECONFIG", kubeconfigPath); err != nil {
+					panic(err)
+				}
+
+				// Remove CA data
+				kubeconfigBytes, err := ioutil.ReadFile(kubeconfigPath)
+				if err != nil {
+					panic(err)
+				}
+
+				var kubeconfig KubernetesConfig
+				yaml.Unmarshal(kubeconfigBytes, &kubeconfig)
+				kubeconfig.Clusters[0].Cluster.CertificateAuthorityData = nil
+
+				if kubeconfigBytes, err = yaml.Marshal(kubeconfig); err != nil {
+					panic(err)
+				}
+
+				if err = os.Remove(kubeconfigPath); err != nil {
+					panic(err)
+				}
+
+				assets.AddBytes("kubeconfig.yaml", kubeconfigBytes)
+				writeAssets("kubeconfig.yaml")
 
 				// Create a new iam-authenticator user
 				shell(

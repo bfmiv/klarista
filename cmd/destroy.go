@@ -117,7 +117,7 @@ var destroyCmd = &cobra.Command{
 				)
 			})
 
-			shell("bash", "-c", "rm -rf *")
+			shell("bash", "-c", "ls -a1 | tail -n +3 | xargs rm -rf")
 		})
 	},
 }
