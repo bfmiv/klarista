@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path"
 	"strings"
 	"time"
 
+	"github.com/ghodss/yaml"
 	"github.com/spf13/cobra"
 )
 
@@ -51,26 +51,28 @@ var createCmd = &cobra.Command{
 
 		setAwsEnv(localStateDir, inputIds)
 
-		useWorkDir(path.Join(localStateDir, "tf_state"), func() {
-			shell("terraform", "init")
+		useRemoteState(name, stateBucketName, true, func() {
+			useWorkDir(path.Join(localStateDir, "tf_state"), func() {
+				shell("terraform", "init")
 
-			shell(
-				"bash",
-				"-c",
-				fmt.Sprintf(
-					`terraform apply -auto-approve -compact-warnings -var "cluster_name=%s" -var "state_bucket_name=%s" %s`,
-					name,
-					stateBucketName,
-					getVarFileFlags(inputIds),
-				),
-			)
+				shell(
+					"bash",
+					"-c",
+					fmt.Sprintf(
+						`terraform apply -auto-approve -compact-warnings -var "cluster_name=%s" -var "state_bucket_name=%s" %s`,
+						name,
+						stateBucketName,
+						getVarFileFlags(inputIds),
+					),
+				)
+			})
 		})
 
 		writeAssets()
 
 		Logger.Infof(`Writing output to "s3://%s"`, stateBucketName)
 
-		useRemoteState(name, stateBucketName, func() {
+		useRemoteState(name, stateBucketName, true, func() {
 			useWorkDir("tf", func() {
 				writeAssets()
 
@@ -116,24 +118,35 @@ var createCmd = &cobra.Command{
 					panic(err)
 				}
 
-				if err = os.Setenv("KUBECONFIG", path.Join(localStateDir, "kubeconfig.yaml")); err != nil {
-					panic(err)
+				adminKubeconfigPath := path.Join(localStateDir, ".kubeconfig.admin.yaml")
+				kubeconfigPath := path.Join(localStateDir, "kubeconfig.yaml")
+
+				// Export the cluster kubeconfig with temporary admin creds
+				exportAdminKubeconfig := func() {
+					shell(
+						"kops",
+						"export",
+						"kubeconfig",
+						name,
+						"--admin",
+						"--kubeconfig",
+						adminKubeconfigPath,
+					)
+					if err = os.Setenv("KUBECONFIG", adminKubeconfigPath); err != nil {
+						panic(err)
+					}
 				}
 
 				var isNewCluster bool
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							Logger.Debugf("Recovered: %s", r)
-							isNewCluster = true
-						}
-					}()
-					shell(
-						"bash",
-						"-c",
-						"kops get cluster $CLUSTER &> /dev/null",
-					)
-				}()
+				shell(
+					"bash",
+					"-c",
+					"kops get cluster $CLUSTER &> /dev/null",
+					func(err error) {
+						Logger.Debug(err)
+						isNewCluster = true
+					},
+				)
 
 				shell(
 					"bash",
@@ -157,6 +170,14 @@ var createCmd = &cobra.Command{
 					),
 				)
 
+				if isNewCluster {
+					if err = os.Setenv("KUBECONFIG", kubeconfigPath); err != nil {
+						panic(err)
+					}
+				} else {
+					exportAdminKubeconfig()
+				}
+
 				shell(
 					"kops",
 					"update",
@@ -178,6 +199,10 @@ var createCmd = &cobra.Command{
 						return ""
 					}(),
 				)
+
+				if isNewCluster {
+					exportAdminKubeconfig()
+				}
 
 				useWorkDir(pwd, func() {
 					// Read the generated kops terraform
@@ -314,9 +339,10 @@ var createCmd = &cobra.Command{
 					)
 				}
 
-				// Wait until the only validation failures are for aws-iam-authenticator
+				// Wait until the only remaining validation failures are expected
 				for {
-					validateArgs := []string{
+					var validateBytes []byte
+					validateArgs := []interface{}{
 						"validate",
 						"cluster",
 						name,
@@ -326,28 +352,40 @@ var createCmd = &cobra.Command{
 					if isDebug() {
 						validateArgs = append(validateArgs, "-v7")
 					}
-					validateCmd := exec.Command("kops", validateArgs...)
-					validateBytes, _ := validateCmd.Output()
+					validateArgs = append(
+						validateArgs,
+						func(err error) {
+							Logger.Warn(err)
+						},
+						func(output []byte) {
+							validateBytes = output
+						},
+					)
+					shell("kops", validateArgs...)
 
 					var validateJSON map[string]interface{}
 					json.Unmarshal(validateBytes, &validateJSON)
 
 					if validateJSON != nil {
+						if isDebug() {
+							Logger.Debug(FormatStruct(validateJSON))
+						}
+
 						if validateJSON["failures"] == nil {
 							break
 						}
 
 						failures := validateJSON["failures"].([]interface{})
-						iamAuthenticatorFailureCount := 0
+						expectedFailureCount := 0
 
 						for _, f := range failures {
 							failure := f.(map[string]interface{})
 							if strings.HasPrefix(failure["name"].(string), "kube-system/aws-iam-authenticator") {
-								iamAuthenticatorFailureCount++
+								expectedFailureCount++
 							}
 						}
 
-						if len(failures) == iamAuthenticatorFailureCount {
+						if len(failures) == expectedFailureCount {
 							break
 						}
 					}
@@ -369,6 +407,31 @@ var createCmd = &cobra.Command{
 						kubectl apply -f -
 					`,
 				)
+
+				if err = os.Setenv("KUBECONFIG", kubeconfigPath); err != nil {
+					panic(err)
+				}
+
+				// Remove CA data
+				kubeconfigBytes, err := ioutil.ReadFile(kubeconfigPath)
+				if err != nil {
+					panic(err)
+				}
+
+				var kubeconfig KubernetesConfig
+				yaml.Unmarshal(kubeconfigBytes, &kubeconfig)
+				kubeconfig.Clusters[0].Cluster.CertificateAuthorityData = nil
+
+				if kubeconfigBytes, err = yaml.Marshal(kubeconfig); err != nil {
+					panic(err)
+				}
+
+				if err = os.Remove(kubeconfigPath); err != nil {
+					panic(err)
+				}
+
+				assets.AddBytes("kubeconfig.yaml", kubeconfigBytes)
+				writeAssets("kubeconfig.yaml")
 
 				// Create a new iam-authenticator user
 				shell(
@@ -425,7 +488,7 @@ var createCmd = &cobra.Command{
 			}
 		})
 
-		useRemoteState(name, stateBucketName, func() {
+		useRemoteState(name, stateBucketName, true, func() {
 			shell(
 				"bash",
 				"-c",

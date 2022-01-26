@@ -1,7 +1,7 @@
 FROM golang:1.15-buster as dev
 
 # Download packr binary
-RUN go get -u github.com/gobuffalo/packr/v2/packr2
+RUN go get -u github.com/gobuffalo/packr/packr2
 
 WORKDIR $GOPATH/src/github.com/bfmiv/klarista
 

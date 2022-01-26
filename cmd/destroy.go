@@ -46,7 +46,7 @@ var destroyCmd = &cobra.Command{
 
 		Logger.Infof(`Destroying cluster "%s"`, name)
 
-		useRemoteState(name, stateBucketName, func() {
+		useRemoteState(name, stateBucketName, true, func() {
 			if err = os.Setenv("CLUSTER", name); err != nil {
 				panic(err)
 			}
@@ -117,7 +117,7 @@ var destroyCmd = &cobra.Command{
 				)
 			})
 
-			shell("bash", "-c", "rm -rf *")
+			shell("bash", "-c", "ls -a1 | tail -n +3 | xargs rm -rf")
 		})
 	},
 }

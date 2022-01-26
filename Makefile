@@ -8,7 +8,7 @@ export DOCKER_BRANCH_TAG = '$(GIT_BRANCH)$(if $(GIT_DIRTY),--DIRTY)'
 export DOCKER_COMMIT_TAG = '$(GIT_COMMIT)$(if $(GIT_DIRTY),--DIRTY)'
 export DOCKER_IMAGE      = "bernardmcmanus/klarista"
 
-export KLARISTA_CLI_VERSION               = '0.12.0'
+export KLARISTA_CLI_VERSION               = '0.14.0'
 export KLARISTA_CLI_VERSION_TAG           = '$(KLARISTA_CLI_VERSION)$(if $(GIT_DIRTY),--DIRTY)'
 export KLARISTA_CLI_VERSION_ALIAS_TAG = '$(shell awk 'BEGIN { FS = "." } ; { print $$1 "." $$2 }' <<< '$(KLARISTA_CLI_VERSION)')$(if $(GIT_DIRTY),--DIRTY)'
 
@@ -55,7 +55,7 @@ push:
 	@$(call each_release_tag, docker push `repotag`)
 
 .PHONY: install
-install: dev release
+install: release
 	@docker run \
 		--rm \
 		$(DOCKER_IMAGE):$(DOCKER_COMMIT_TAG)-release \

@@ -43,7 +43,7 @@ var getCmd = &cobra.Command{
 
 		var result string
 
-		useRemoteState(name, stateBucketName, func() {
+		useRemoteState(name, stateBucketName, false, func() {
 			var err error
 			if pathOnly {
 				result, err = filepath.Abs(requestedPath)
