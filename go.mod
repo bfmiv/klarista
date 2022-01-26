@@ -7,6 +7,7 @@ require (
 	github.com/ghodss/yaml v1.0.0
 	github.com/gobuffalo/packr/v2 v2.8.0
 	github.com/gobwas/glob v0.2.3
+	github.com/k0kubun/colorstring v0.0.0-20150214042306-9440f1994b88 // indirect
 	github.com/k0kubun/pp v3.0.1+incompatible
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mholt/archiver/v3 v3.5.0
@@ -16,4 +17,9 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/thanhpk/randstr v1.0.4
 	github.com/thoas/go-funk v0.7.0
+)
+
+replace (
+	github.com/ulikunitz/xz v0.5.6 => github.com/ulikunitz/xz v0.5.8
+	github.com/ulikunitz/xz v0.5.7 => github.com/ulikunitz/xz v0.5.8
 )
