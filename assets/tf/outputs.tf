@@ -30,6 +30,10 @@ output "cluster_master_size" {
   value = var.cluster_master_size
 }
 
+output "cluster_masters_per_subnet" {
+  value = var.cluster_masters_per_subnet
+}
+
 output "cluster_node_instance_groups" {
   value = var.cluster_node_instance_groups
 }

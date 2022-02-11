@@ -11,8 +11,8 @@ spec:
   kubernetesVersion: {{ $.k8s_version }}
   image: {{ $.cluster_image }}
   machineType: {{ $.cluster_master_size }}
-  maxSize: 1
-  minSize: 1
+  maxSize: {{ $.cluster_masters_per_subnet }}
+  minSize: {{ $.cluster_masters_per_subnet }}
   subnets:
   - private-{{ . }}
 {{ end }}

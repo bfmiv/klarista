@@ -3,11 +3,13 @@
 apiVersion: kops.k8s.io/v1alpha2
 kind: InstanceGroup
 metadata:
-  labels:
-    kops.k8s.io/cluster: {{ $.cluster_name }}
-  name: nodes
   <<: {{ .metadata | toJson }}
+  labels:
+    <<: {{ default (dict) (get .metadata "labels") | toJson }}
+    kops.k8s.io/cluster: {{ $.cluster_name }}
+  name: {{ default "nodes" (get .metadata "name") }}
 spec:
+  <<: {{ .spec | toJson }}
   cloudLabels:
     service: k8s_node
     k8s.io/cluster-autoscaler/enabled: ""
@@ -16,8 +18,11 @@ spec:
   kubernetesVersion: {{ $.k8s_version }}
   image: {{ $.cluster_image }}
   subnets:
-  {{ range $.cluster_availability_zones }}
+  {{ range (default $.cluster_availability_zones .availability_zones) }}
   - private-{{ . }}
   {{ end }}
-  <<: {{ .spec | toJson }}
+  taints:
+  {{ range (default (list) (get .spec "taints")) }}
+  - "{{ .key }}={{ .value }}:{{ .effect }}"
+  {{ end }}
 {{ end }}
