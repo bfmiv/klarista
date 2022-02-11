@@ -1,5 +1,7 @@
 terraform {
-  required_version = ">= 0.12"
+  required_version = ">= 1"
+
+  experiments = [module_variable_optional_attrs]
 
   required_providers {
     aws = "~> 3.6"
@@ -46,7 +48,7 @@ resource "aws_route53_record" "k8s_api_validation" {
 }
 
 resource "aws_acm_certificate_validation" "k8s_api" {
-  certificate_arn = aws_acm_certificate.k8s_api.arn
+  certificate_arn         = aws_acm_certificate.k8s_api.arn
   validation_record_fqdns = [for record in aws_route53_record.k8s_api_validation : record.fqdn]
 }
 

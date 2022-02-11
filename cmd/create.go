@@ -198,6 +198,7 @@ var createCmd = &cobra.Command{
 						}
 						return ""
 					}(),
+					"--allow-kops-downgrade",
 				)
 
 				if isNewCluster {
