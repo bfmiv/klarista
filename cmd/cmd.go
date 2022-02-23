@@ -424,7 +424,7 @@ func useTempDir(args ...interface{}) {
 	})
 }
 
-func useRemoteState(clusterName, bucket string, write bool, cb func()) {
+func useRemoteState(clusterName, bucket string, read bool, write bool, cb func()) {
 	remoteStateKey := "klarista.state.tar"
 
 	sess := session.Must(session.NewSession())
@@ -438,10 +438,12 @@ func useRemoteState(clusterName, bucket string, write bool, cb func()) {
 			panic(fmt.Errorf("Failed to create file %q, %v", localStateFilePath, err))
 		}
 
-		_, err = downloader.Download(stateFile, &s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(remoteStateKey),
-		})
+		if read {
+			_, err = downloader.Download(stateFile, &s3.GetObjectInput{
+				Bucket: aws.String(bucket),
+				Key:    aws.String(remoteStateKey),
+			})
+		}
 
 		useTempDir(clusterName, false, func() {
 			if err != nil {
@@ -457,7 +459,7 @@ func useRemoteState(clusterName, bucket string, write bool, cb func()) {
 				} else {
 					panic(fmt.Errorf("Failed to download file, %v", err))
 				}
-			} else {
+			} else if read {
 				Logger.Debugf("Reading state from s3://%s/%s", bucket, remoteStateKey)
 				tar := &archiver.Tar{
 					ImplicitTopLevelFolder: false,

@@ -84,6 +84,8 @@ module "cluster_vpc" {
   enable_dns_hostnames   = true
   enable_nat_gateway     = true
   one_nat_gateway_per_az = true
+  reuse_nat_ips          = length(var.nat_elastic_ip_ids) > 0
+  external_nat_ip_ids    = var.nat_elastic_ip_ids
 
   tags = merge(local.tags, {
     // This is so kops knows that the VPC resources can be used for k8s
