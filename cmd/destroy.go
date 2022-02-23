@@ -46,7 +46,7 @@ var destroyCmd = &cobra.Command{
 
 		Logger.Infof(`Destroying cluster "%s"`, name)
 
-		useRemoteState(name, stateBucketName, true, func() {
+		useRemoteState(name, stateBucketName, true, true, func() {
 			if err = os.Setenv("CLUSTER", name); err != nil {
 				panic(err)
 			}

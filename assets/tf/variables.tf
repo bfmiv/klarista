@@ -103,6 +103,12 @@ variable "private_subnets" {
   }
 }
 
+variable "nat_elastic_ip_ids" {
+  description = "IDs of pre-allocated elastic IP addresses to be associated with NAT gateways"
+  type        = list(string)
+  default     = []
+}
+
 locals {
   aws_iam_admin_role_name = "Kubernetes.${var.cluster_name}.Admin"
   cluster_name_segments   = split(".", var.cluster_name)

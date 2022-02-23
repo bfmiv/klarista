@@ -1,10 +1,10 @@
-aws_profile = null
-aws_region = null
+aws_profile             = null
+aws_region              = null
 aws_authorized_accounts = []
 
 # See https://github.com/kubernetes/kops/blob/master/docs/operations/images.md
 cluster_image = "ubuntu/ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-20211129"
-k8s_version = "1.21.7"
+k8s_version   = "1.22.5"
 
 k8s_api_ingress_sources = []
 

@@ -424,7 +424,7 @@ func useTempDir(args ...interface{}) {
 	})
 }
 
-func useRemoteState(clusterName, bucket string, write bool, cb func()) {
+func useRemoteState(clusterName, bucket string, read bool, write bool, cb func()) {
 	remoteStateKey := "klarista.state.tar"
 
 	sess := session.Must(session.NewSession())
@@ -438,35 +438,37 @@ func useRemoteState(clusterName, bucket string, write bool, cb func()) {
 			panic(fmt.Errorf("Failed to create file %q, %v", localStateFilePath, err))
 		}
 
-		_, err = downloader.Download(stateFile, &s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(remoteStateKey),
-		})
-
 		useTempDir(clusterName, false, func() {
-			if err != nil {
-				if aerr, ok := err.(awserr.Error); ok {
-					switch aerr.Code() {
-					case s3.ErrCodeNoSuchKey:
-						Logger.Warn(aerr.Error())
-					case s3.ErrCodeNoSuchBucket:
-						Logger.Error(aerr.Error())
-					default:
-						panic(aerr.Error())
+			if read {
+				_, err = downloader.Download(stateFile, &s3.GetObjectInput{
+					Bucket: aws.String(bucket),
+					Key:    aws.String(remoteStateKey),
+				})
+
+				if err != nil {
+					if aerr, ok := err.(awserr.Error); ok {
+						switch aerr.Code() {
+						case s3.ErrCodeNoSuchKey:
+							Logger.Warn(aerr.Error())
+						case s3.ErrCodeNoSuchBucket:
+							Logger.Error(aerr.Error())
+						default:
+							panic(aerr.Error())
+						}
+					} else {
+						panic(fmt.Errorf("Failed to download file, %v", err))
 					}
 				} else {
-					panic(fmt.Errorf("Failed to download file, %v", err))
-				}
-			} else {
-				Logger.Debugf("Reading state from s3://%s/%s", bucket, remoteStateKey)
-				tar := &archiver.Tar{
-					ImplicitTopLevelFolder: false,
-					MkdirAll:               true,
-					OverwriteExisting:      true,
-					StripComponents:        0,
-				}
-				if err := tar.Unarchive(localStateFilePath, "."); err != nil {
-					panic(err)
+					Logger.Debugf("Reading state from s3://%s/%s", bucket, remoteStateKey)
+					tar := &archiver.Tar{
+						ImplicitTopLevelFolder: false,
+						MkdirAll:               true,
+						OverwriteExisting:      true,
+						StripComponents:        0,
+					}
+					if err := tar.Unarchive(localStateFilePath, "."); err != nil {
+						panic(err)
+					}
 				}
 			}
 
