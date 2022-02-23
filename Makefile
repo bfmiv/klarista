@@ -8,7 +8,7 @@ export DOCKER_BRANCH_TAG = '$(GIT_BRANCH)$(if $(GIT_DIRTY),--DIRTY)'
 export DOCKER_COMMIT_TAG = '$(GIT_COMMIT)$(if $(GIT_DIRTY),--DIRTY)'
 export DOCKER_IMAGE      = "bernardmcmanus/klarista"
 
-export KLARISTA_CLI_VERSION               = '0.14.2'
+export KLARISTA_CLI_VERSION               = '0.15.0'
 export KLARISTA_CLI_VERSION_TAG           = '$(KLARISTA_CLI_VERSION)$(if $(GIT_DIRTY),--DIRTY)'
 export KLARISTA_CLI_VERSION_ALIAS_TAG = '$(shell awk 'BEGIN { FS = "." } ; { print $$1 "." $$2 }' <<< '$(KLARISTA_CLI_VERSION)')$(if $(GIT_DIRTY),--DIRTY)'
 
