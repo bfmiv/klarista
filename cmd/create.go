@@ -413,16 +413,53 @@ var createCmd = &cobra.Command{
 					panic(err)
 				}
 
-				// Remove CA data
-				kubeconfigBytes, err := ioutil.ReadFile(kubeconfigPath)
-				if err != nil {
-					panic(err)
+				// Build cluster kubeconfig
+				kubeconfig := KubernetesConfig{
+					ApiVersion:     "v1",
+					CurrentContext: name,
+					Kind:           "Config",
+					Preferences:    map[string]interface{}{},
+					Clusters: []KubernetesCluster{
+						{
+							Cluster: KubernetesClusterCluster{
+								Server: "https://api." + name,
+							},
+							Name: name,
+						},
+					},
+					Contexts: []KubernetesContext{
+						{
+							Context: KubernetesContextContext{
+								Cluster: name,
+								User:    name,
+							},
+							Name: name,
+						},
+					},
+					Users: []KubernetesUser{
+						{
+							Name: name,
+							User: KubernetesUserUser{
+								Exec: &map[string]interface{}{
+									"apiVersion": "client.authentication.k8s.io/v1alpha1",
+									"args": []string{
+										"token",
+										"-i",
+										name,
+										"-r",
+										awsIamClusterAdminRoleArn,
+									},
+									"command":            "aws-iam-authenticator",
+									"env":                nil,
+									"interactiveMode":    "IfAvailable",
+									"provideClusterInfo": false,
+								},
+							},
+						},
+					},
 				}
 
-				var kubeconfig KubernetesConfig
-				yaml.Unmarshal(kubeconfigBytes, &kubeconfig)
-				kubeconfig.Clusters[0].Cluster.CertificateAuthorityData = nil
-
+				var kubeconfigBytes []byte
 				if kubeconfigBytes, err = yaml.Marshal(kubeconfig); err != nil {
 					panic(err)
 				}
@@ -433,30 +470,6 @@ var createCmd = &cobra.Command{
 
 				assets.AddBytes("kubeconfig.yaml", kubeconfigBytes)
 				writeAssets("kubeconfig.yaml")
-
-				// Create a new iam-authenticator user
-				shell(
-					"kubectl",
-					"config",
-					"set-credentials",
-					name+".exec",
-					"--exec-api-version", "client.authentication.k8s.io/v1alpha1",
-					"--exec-command", "aws-iam-authenticator",
-					"--exec-arg", "token",
-					"--exec-arg", "-i",
-					"--exec-arg", name,
-					"--exec-arg", "-r",
-					"--exec-arg", awsIamClusterAdminRoleArn,
-				)
-
-				// Update user in cluster context
-				shell(
-					"kubectl",
-					"config",
-					"set",
-					fmt.Sprintf("contexts.%s.user", name),
-					fmt.Sprintf("%s.exec", name),
-				)
 			})
 		})
 
@@ -487,20 +500,6 @@ var createCmd = &cobra.Command{
 				Logger.Info("Cluster authentication failed, trying again in 30s")
 				time.Sleep(30 * time.Second)
 			}
-		})
-
-		useRemoteState(name, stateBucketName, true, true, func() {
-			shell(
-				"bash",
-				"-c",
-				`
-					# Remove default users from kubeconfig
-					# Original kubeconfig can be recovered with kops
-					# See https://kops.sigs.k8s.io/cli/kops_export_kubecfg/
-					kubectl config unset users.$CLUSTER
-					kubectl config unset users.$CLUSTER-basic-auth
-				`,
-			)
 		})
 
 		Logger.Info("☕️ Your cluster is ready!")

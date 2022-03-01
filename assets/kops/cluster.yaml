@@ -69,7 +69,9 @@ spec:
       type: Public
       sslCertificate: {{ .k8s_api_certificate_arn }}
   authentication:
-    aws: {}
+    aws:
+      backendMode: CRD
+      clusterID: {{ .cluster_name }}
   authorization:
     rbac: {}
   channel: stable
