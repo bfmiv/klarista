@@ -1,28 +1,34 @@
 package cmd
 
+type KubernetesClusterCluster struct {
+	CertificateAuthorityData *string `json:"certificate-authority-data,omitempty"`
+	Server                   string  `json:"server"`
+}
+
 type KubernetesCluster struct {
-	Cluster struct {
-		CertificateAuthorityData *string `json:"certificate-authority-data,omitempty"`
-		Server                   string  `json:"server"`
-	} `json:"cluster"`
-	Name string `json:"name"`
+	Cluster KubernetesClusterCluster `json:"cluster"`
+	Name    string                   `json:"name"`
+}
+
+type KubernetesContextContext struct {
+	Cluster string `json:"cluster"`
+	User    string `json:"user"`
 }
 
 type KubernetesContext struct {
-	Context struct {
-		Cluster string `json:"cluster"`
-		User    string `json:"user"`
-	} `json:"context"`
-	Name string `json:"name"`
+	Context KubernetesContextContext `json:"context"`
+	Name    string                   `json:"name"`
+}
+
+type KubernetesUserUser struct {
+	ClientCertificateData *string                 `json:"client-certificate-data,omitempty"`
+	ClientKeyData         *string                 `json:"client-key-data,omitempty"`
+	Exec                  *map[string]interface{} `json:"exec,omitempty"`
 }
 
 type KubernetesUser struct {
-	Name string `json:"name"`
-	User struct {
-		ClientCertificateData *string                 `json:"client-certificate-data,omitempty"`
-		ClientKeyData         *string                 `json:"client-key-data,omitempty"`
-		Exec                  *map[string]interface{} `json:"exec,omitempty"`
-	} `json:"user"`
+	Name string             `json:"name"`
+	User KubernetesUserUser `json:"user"`
 }
 
 type KubernetesConfig struct {

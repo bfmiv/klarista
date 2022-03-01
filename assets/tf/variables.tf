@@ -13,6 +13,10 @@ variable "aws_region" {
 
 variable "cluster_name" {
   type = string
+  validation {
+    condition     = length(var.cluster_name) <= 44
+    error_message = "Cluster names must be 44 characters or less."
+  }
 }
 
 variable "state_bucket_name" {
@@ -110,7 +114,7 @@ variable "nat_elastic_ip_ids" {
 }
 
 locals {
-  aws_iam_admin_role_name = "Kubernetes.${var.cluster_name}.Admin"
+  aws_iam_admin_role_name = "K8S.${var.cluster_name}.ClusterAdmin"
   cluster_name_segments   = split(".", var.cluster_name)
   cluster_stage           = split("-", local.cluster_name_segments[0])[0]
   cluster_dns_zone        = join(".", slice(local.cluster_name_segments, 1, length(local.cluster_name_segments)))
