@@ -90,21 +90,21 @@ var createCmd = &cobra.Command{
 					),
 				)
 
-				outputBytes, err := getOutputJSONBytes()
+				terraformOutputBytes, err := getTerraformOutputJSONBytes()
 				if err != nil {
 					panic(err)
 				}
 
-				var output map[string]interface{}
-				err = json.Unmarshal(outputBytes, &output)
+				var terraformOutput map[string]interface{}
+				err = json.Unmarshal(terraformOutputBytes, &terraformOutput)
 				if err != nil {
 					panic(err)
 				}
 
-				assets.AddBytes(path.Join("tf", "output.json"), outputBytes)
+				assets.AddBytes(path.Join("tf", "output.json"), terraformOutputBytes)
 				writeAssets()
 
-				awsIamClusterAdminRoleArn := output["aws_iam_cluster_admin_role_arn"].(string)
+				awsIamClusterAdminRoleArn := terraformOutput["aws_iam_cluster_admin_role_arn"].(string)
 
 				if err = os.Setenv("CLUSTER", name); err != nil {
 					panic(err)
@@ -230,7 +230,7 @@ var createCmd = &cobra.Command{
 					delete(kopsJSON, "terraform")
 
 					// Get terraform json output
-					outputJSON, err := getOutputJSON()
+					terraformOutputJSON, err := getTerraformOutputJSON()
 					if err != nil {
 						panic(err)
 					}
@@ -244,8 +244,8 @@ var createCmd = &cobra.Command{
 						for _, lc := range launchConfigs {
 							rootVolume := lc.(map[string]interface{})["root_block_device"].(map[string]interface{})
 							rootVolume["encrypted"] = true
-							if outputJSON["encryption_key_arn"] != nil {
-								rootVolume["kms_key_id"] = outputJSON["encryption_key_arn"]
+							if terraformOutputJSON["encryption_key_arn"] != nil {
+								rootVolume["kms_key_id"] = terraformOutputJSON["encryption_key_arn"]
 							}
 						}
 					}
@@ -261,8 +261,8 @@ var createCmd = &cobra.Command{
 								for _, vol := range ebs {
 									volume := vol.(map[string]interface{})
 									volume["encrypted"] = true
-									if outputJSON["encryption_key_arn"] != nil {
-										volume["kms_key_id"] = outputJSON["encryption_key_arn"]
+									if terraformOutputJSON["encryption_key_arn"] != nil {
+										volume["kms_key_id"] = terraformOutputJSON["encryption_key_arn"]
 									}
 								}
 							}
@@ -305,13 +305,13 @@ var createCmd = &cobra.Command{
 					),
 				)
 
-				// Write kops output
-				outputBytes, err = getOutputJSONBytes()
+				// Write kops terraform output
+				terraformOutputBytes, err = getTerraformOutputJSONBytes()
 				if err != nil {
 					panic(err)
 				}
 
-				assets.AddBytes(path.Join("tf", "output.json"), outputBytes)
+				assets.AddBytes(path.Join("tf", "output.json"), terraformOutputBytes)
 				writeAssets()
 
 				if isNewCluster {
@@ -470,6 +470,13 @@ var createCmd = &cobra.Command{
 
 				assets.AddBytes("kubeconfig.yaml", kubeconfigBytes)
 				writeAssets("kubeconfig.yaml")
+
+				// Build environment file
+				assets.AddBytes(".env", generateEnvironmentFile(map[string]string{
+					"KLARISTA_LOCAL_STATE_DIR": "${TMPDIR:-/tmp/}" + name,
+					"KUBECONFIG":               "${KLARISTA_LOCAL_STATE_DIR}/kubeconfig.yaml",
+				}))
+				writeAssets(".env")
 			})
 		})
 
