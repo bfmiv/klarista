@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/gobwas/glob"
 	"github.com/mholt/archiver/v3"
 	"github.com/spf13/cast"
+	"github.com/stevenle/topsort"
 	"github.com/thanhpk/randstr"
 	"github.com/thoas/go-funk"
 )
@@ -197,7 +199,7 @@ func getVarFileFlags(inputIds []string) string {
 	)
 }
 
-func getOutputJSONBytes() ([]byte, error) {
+func getTerraformOutputJSONBytes() ([]byte, error) {
 	command := exec.Command("terraform", "output", "-json")
 	outputBytes, err := command.Output()
 	if err != nil {
@@ -222,8 +224,8 @@ func getOutputJSONBytes() ([]byte, error) {
 	return outputBytes, nil
 }
 
-func getOutputJSON() (map[string]interface{}, error) {
-	outputBytes, err := getOutputJSONBytes()
+func getTerraformOutputJSON() (map[string]interface{}, error) {
+	outputBytes, err := getTerraformOutputJSONBytes()
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +254,7 @@ func setAwsEnv(localStateDir string, inputIds []string) {
 			),
 		)
 
-		output, err := getOutputJSON()
+		output, err := getTerraformOutputJSON()
 		if err != nil {
 			panic(err)
 		}
@@ -268,6 +270,79 @@ func setAwsEnv(localStateDir string, inputIds []string) {
 			panic(err)
 		}
 	})
+}
+
+func generateEnvironmentFile(args ...map[string]string) []byte {
+	var overrides map[string]string
+	if len(args) == 1 {
+		overrides = args[0]
+	}
+
+	environment := map[string]string{}
+	graph := topsort.NewGraph()
+	varNames := funk.UniqString(
+		append(
+			[]string{
+				"AWS_PROFILE",
+				"AWS_REGION",
+				"CLUSTER",
+				"KOPS_STATE_STORE",
+				"KUBECONFIG",
+			},
+			funk.Keys(overrides).([]string)...,
+		),
+	)
+
+	// Build the environment variable map, add nodes to dependency graph
+	for _, name := range varNames {
+		var value string
+		var ok bool
+		if value, ok = overrides[name]; !ok {
+			value = os.Getenv(name)
+		}
+		environment[name] = value
+		graph.AddNode(name)
+	}
+
+	// Add edges to dependency graph
+	for key, value := range environment {
+		for _, name := range varNames {
+			if name == key {
+				continue
+			}
+			if strings.Contains(value, name) {
+				graph.AddEdge(key, name)
+			}
+		}
+	}
+
+	// Environment variables may reference each other, so must be sorted topologically
+	sort.Slice(varNames, func(i, j int) bool {
+		a := varNames[i]
+		b := varNames[j]
+
+		orderA, err := graph.TopSort(a)
+		if err != nil {
+			panic(err)
+		}
+
+		orderB, err := graph.TopSort(b)
+		if err != nil {
+			panic(err)
+		}
+
+		// graph.TopSort(name) returns an array of variable names where
+		// name is always the last element. We can use the lengths of
+		// the node paths to determine the desired varNames sort order.
+		return len(orderA) < len(orderB)
+	})
+
+	lines := make([]string, len(varNames))
+	for i, name := range varNames {
+		lines[i] = fmt.Sprintf(`export %s="%s"`, name, environment[name])
+	}
+
+	return []byte(strings.Join(lines, "\n"))
 }
 
 // ShellErrorCallback - shell error callback function
