@@ -18,7 +18,8 @@ data "aws_caller_identity" "self" {
 }
 
 data "aws_route53_zone" "public" {
-  name = "${local.cluster_dns_zone}."
+  name         = "${local.cluster_dns_zone}."
+  private_zone = false
 }
 
 resource "aws_acm_certificate" "k8s_api" {
