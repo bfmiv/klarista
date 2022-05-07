@@ -60,6 +60,13 @@ variable "cluster_node_instance_groups" {
         key    = string
         value  = string
       })))
+      volumes = optional(list(object({
+        device    = string
+        size      = number
+        type      = string
+        encrypted = optional(bool)
+        key       = optional(string)
+      })))
     })
   }))
 }
