@@ -7,6 +7,8 @@ metadata:
     kops.k8s.io/cluster: {{ $.cluster_name }}
   name: master-{{ . }}
 spec:
+  cloudLabels:
+    <<: {{ default (dict) $.aws_provider_default_tags | toJson }}
   role: Master
   kubernetesVersion: {{ $.k8s_version }}
   image: {{ $.cluster_image }}
