@@ -1,8 +1,8 @@
 terraform {
-  required_version = ">= 0.12"
+  required_version = ">= 1"
 
   required_providers {
-    aws = "~> 3.6"
+    aws = "~> 4.8"
   }
 }
 
@@ -12,6 +12,11 @@ variable "aws_profile" {
 
 variable "aws_region" {
   type = string
+}
+
+variable "aws_provider_default_tags" {
+  type    = any
+  default = null
 }
 
 variable "cluster_name" {
@@ -25,6 +30,10 @@ variable "state_bucket_name" {
 provider "aws" {
   profile = var.aws_profile
   region  = var.aws_region
+
+  default_tags {
+    tags = var.aws_provider_default_tags
+  }
 }
 
 resource "aws_s3_bucket" "klarista_state" {
@@ -52,10 +61,7 @@ resource "aws_s3_bucket" "klarista_state" {
   }
 
   tags = {
-    Name        = var.state_bucket_name
-    environment = var.cluster_name
-    terraform   = true
-    workspace   = terraform.workspace
+    Name = var.state_bucket_name
   }
 }
 

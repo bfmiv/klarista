@@ -81,3 +81,7 @@ output "cluster_availability_zones" {
 output "k8s_api_certificate_arn" {
   value = aws_acm_certificate.k8s_api.arn
 }
+
+output "aws_provider_default_tags" {
+  value = var.aws_provider_default_tags
+}
