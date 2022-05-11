@@ -53,7 +53,7 @@ var createCmd = &cobra.Command{
 
 		useRemoteState(name, stateBucketName, true, true, func() {
 			useWorkDir(path.Join(localStateDir, "tf_state"), func() {
-				shell("terraform", "init")
+				shell("terraform", "init", "-upgrade")
 
 				shell(
 					"bash",
@@ -472,10 +472,7 @@ var createCmd = &cobra.Command{
 				writeAssets("kubeconfig.yaml")
 
 				// Build environment file
-				assets.AddBytes(".env", generateEnvironmentFile(map[string]string{
-					"KLARISTA_LOCAL_STATE_DIR": "${TMPDIR:-/tmp/}" + name,
-					"KUBECONFIG":               "${KLARISTA_LOCAL_STATE_DIR}/kubeconfig.yaml",
-				}))
+				assets.AddBytes(".env", generateDefaultEnvironmentFile(name))
 				writeAssets(".env")
 			})
 		})

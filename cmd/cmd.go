@@ -180,10 +180,12 @@ func getInitialInputs(localStateDir string) []string {
 		}
 	}
 
-	Logger.Infof(
-		"Reading input from [\n\t%s,\n]",
-		strings.Join(initialInputs, ",\n\t"),
-	)
+	if len(initialInputs) > 0 {
+		Logger.Infof(
+			"Reading input from [\n\t%s,\n]",
+			strings.Join(initialInputs, ",\n\t"),
+		)
+	}
 
 	return initialInputs
 }
@@ -343,6 +345,13 @@ func generateEnvironmentFile(args ...map[string]string) []byte {
 	}
 
 	return []byte(strings.Join(lines, "\n"))
+}
+
+func generateDefaultEnvironmentFile(clusterName string) []byte {
+	return generateEnvironmentFile(map[string]string{
+		"KLARISTA_LOCAL_STATE_DIR": "${TMPDIR:-/tmp/}" + clusterName,
+		"KUBECONFIG":               "${KLARISTA_LOCAL_STATE_DIR}/kubeconfig.yaml",
+	})
 }
 
 // ShellErrorCallback - shell error callback function

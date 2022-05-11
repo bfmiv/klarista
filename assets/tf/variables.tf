@@ -120,13 +120,18 @@ variable "nat_elastic_ip_ids" {
   default     = []
 }
 
+variable "aws_provider_default_tags" {
+  type    = any
+  default = null
+}
+
 locals {
   aws_iam_admin_role_name = "K8S.${var.cluster_name}.ClusterAdmin"
   cluster_name_segments   = split(".", var.cluster_name)
   cluster_stage           = split("-", local.cluster_name_segments[0])[0]
   cluster_dns_zone        = join(".", slice(local.cluster_name_segments, 1, length(local.cluster_name_segments)))
   index_to_az             = ["a", "b", "c", "d", "e", "f"]
-  tags = {
+  tags = var.aws_provider_default_tags != null ? var.aws_provider_default_tags : {
     environment = var.cluster_name
     terraform   = true
     workspace   = terraform.workspace

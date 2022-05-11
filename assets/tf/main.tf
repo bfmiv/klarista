@@ -4,13 +4,17 @@ terraform {
   experiments = [module_variable_optional_attrs]
 
   required_providers {
-    aws = "~> 3.6"
+    aws = "~> 4.8"
   }
 }
 
 provider "aws" {
   profile = var.aws_profile
   region  = var.aws_region
+
+  default_tags {
+    tags = var.aws_provider_default_tags
+  }
 }
 
 data "aws_caller_identity" "self" {
@@ -25,8 +29,6 @@ data "aws_route53_zone" "public" {
 resource "aws_acm_certificate" "k8s_api" {
   domain_name       = "api.${var.cluster_name}"
   validation_method = "DNS"
-
-  tags = merge(local.tags)
 
   lifecycle {
     create_before_destroy = true
@@ -68,8 +70,6 @@ resource "aws_iam_role" "cluster_admin" {
       }
     ]
   })
-
-  tags = merge(local.tags)
 }
 
 module "cluster_vpc" {
@@ -88,19 +88,19 @@ module "cluster_vpc" {
   reuse_nat_ips          = length(var.nat_elastic_ip_ids) > 0
   external_nat_ip_ids    = var.nat_elastic_ip_ids
 
-  tags = merge(local.tags, {
+  tags = {
     // This is so kops knows that the VPC resources can be used for k8s
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
-  })
+  }
 
   // Tags required by k8s to launch services on the right subnets
-  private_subnet_tags = merge(local.tags, {
+  private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
     "SubnetType"                      = "Private"
-  })
+  }
 
-  public_subnet_tags = merge(local.tags, {
+  public_subnet_tags = {
     "kubernetes.io/role/elb" = 1
     "SubnetType"             = "Public"
-  })
+  }
 }
