@@ -6,6 +6,10 @@ output "aws_region" {
   value = var.aws_region
 }
 
+output "aws_provider_default_tags" {
+  value = local.aws_provider_default_tags
+}
+
 output "cluster_name" {
   value = var.cluster_name
 }
@@ -80,8 +84,4 @@ output "cluster_availability_zones" {
 
 output "k8s_api_certificate_arn" {
   value = aws_acm_certificate.k8s_api.arn
-}
-
-output "aws_provider_default_tags" {
-  value = var.aws_provider_default_tags
 }

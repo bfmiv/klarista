@@ -11,6 +11,7 @@ metadata:
 spec:
   <<: {{ .spec | toJson }}
   cloudLabels:
+    <<: {{ default (dict) $.aws_provider_default_tags | toJson }}
     service: k8s_node
     k8s.io/cluster-autoscaler/enabled: ""
     k8s.io/cluster-autoscaler/{{ $.cluster_name }}: ""
