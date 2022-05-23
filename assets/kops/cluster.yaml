@@ -41,7 +41,9 @@ spec:
                   "autoscaling:DescribeAutoScalingGroups",
                   "autoscaling:DescribeAutoScalingInstances",
                   "autoscaling:DescribeLaunchConfigurations",
-                  "autoscaling:DescribeTags"
+                  "autoscaling:DescribeTags",
+                  "ec2:DescribeInstanceTypes",
+                  "ec2:DescribeLaunchTemplateVersions"
               ],
               "Resource": [
                   "*"
@@ -51,7 +53,9 @@ spec:
               "Effect": "Allow",
               "Action": [
                   "autoscaling:SetDesiredCapacity",
-                  "autoscaling:TerminateInstanceInAutoScalingGroup"
+                  "autoscaling:TerminateInstanceInAutoScalingGroup",
+                  "ec2:DescribeInstanceTypes",
+                  "eks:DescribeNodegroup"
               ],
               "Resource": [
                   "arn:aws:autoscaling:{{ .aws_region }}:{{ .aws_account_id }}:autoScalingGroup:*:autoScalingGroupName/*.{{ .cluster_name }}"
