@@ -27,6 +27,8 @@ var createCmd = &cobra.Command{
 		yes, _ := cmd.Flags().GetBool("yes")
 		autoFlags := getAutoFlags(yes)
 
+		clientAuthAPIVersion, _ := cmd.Flags().GetString("client-authentication-api-version")
+
 		pwd, err := os.Getwd()
 		if err != nil {
 			panic(err)
@@ -441,7 +443,7 @@ var createCmd = &cobra.Command{
 							Name: name,
 							User: KubernetesUserUser{
 								Exec: &map[string]interface{}{
-									"apiVersion": "client.authentication.k8s.io/v1alpha1",
+									"apiVersion": clientAuthAPIVersion,
 									"args": []string{
 										"token",
 										"-i",
@@ -515,4 +517,5 @@ func init() {
 	rootCmd.AddCommand(createCmd)
 	createCmd.Flags().Bool("fast", false, "Apply updates as quickly as possible. This is not safe in production")
 	createCmd.Flags().Bool("yes", false, "Skip confirmation")
+	createCmd.Flags().String("client-authentication-api-version", "client.authentication.k8s.io/v1beta1", "Version of the Kubernetes Client Authentication API to use when generating the Kubeconfig file")
 }
