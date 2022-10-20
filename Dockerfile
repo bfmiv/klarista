@@ -1,7 +1,7 @@
-FROM golang:1.15-buster as dev
+FROM golang:1.19-buster as dev
 
 # Download packr binary
-RUN go get -u github.com/gobuffalo/packr/packr2
+RUN go install github.com/gobuffalo/packr/v2/packr2@v2.8.3
 
 WORKDIR $GOPATH/src/github.com/bfmiv/klarista
 
@@ -11,7 +11,7 @@ RUN go mod download
 
 COPY . .
 
-FROM golang:1.15-buster as build
+FROM golang:1.19-buster as build
 
 ARG KLARISTA_CLI_VERSION
 ENV KLARISTA_CLI_VERSION ${KLARISTA_CLI_VERSION}
