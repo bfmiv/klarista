@@ -74,7 +74,7 @@ resource "aws_iam_role" "cluster_admin" {
 
 module "cluster_vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "2.77.0"
+  version = "3.16.1"
 
   name                   = var.cluster_name
   cidr                   = var.cluster_vpc_cidr
