@@ -66,14 +66,9 @@ func createAssetWriter(pwd, localStateDir string, box *packr.Box) AssetWriterFun
 					continue
 				}
 
-				if politeAssets[file] {
-					_, err := os.Stat(fp)
-					if os.IsNotExist(err) {
-						// noop
-					} else {
-						// The file exists; continue
-						continue
-					}
+				if politeAssets[file] && fileExists(fp) {
+					// The file exists; continue
+					continue
 				}
 
 				Logger.Debugf("Writing asset %s", file)
@@ -93,6 +88,14 @@ func createAssetWriter(pwd, localStateDir string, box *packr.Box) AssetWriterFun
 			}
 		})
 	}
+}
+
+func fileExists(fp string) bool {
+	_, err := os.Stat(fp)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return true
 }
 
 // InputProcessorFunc - Input processor function

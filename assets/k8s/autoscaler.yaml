@@ -150,9 +150,6 @@ spec:
         - image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.21.0
           name: cluster-autoscaler
           resources:
-            limits:
-              cpu: 100m
-              memory: 600Mi
             requests:
               cpu: 100m
               memory: 600Mi
