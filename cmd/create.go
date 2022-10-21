@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -116,7 +118,7 @@ var createCmd = &cobra.Command{
 					panic(err)
 				}
 
-				if err = os.Setenv("KOPS_FEATURE_FLAGS", "+TerraformJSON,-TerraformManagedFiles"); err != nil {
+				if err = os.Setenv("KOPS_FEATURE_FLAGS", "-TerraformManagedFiles"); err != nil {
 					panic(err)
 				}
 
@@ -207,90 +209,159 @@ var createCmd = &cobra.Command{
 					exportAdminKubeconfig()
 				}
 
+				NewByteSlice := func(b []byte) *([]byte) { return &b }
+
 				useWorkDir(pwd, func() {
-					// Read the generated kops terraform
-					kopsOutputFile := path.Join(localStateDir, "tf", "kubernetes.tf.json")
-					kopsJSONBytes, err := ioutil.ReadFile(kopsOutputFile)
-					if err != nil {
-						panic(err)
-					}
-
-					var kopsJSON map[string]interface{}
-					err = json.Unmarshal(kopsJSONBytes, &kopsJSON)
-					if err != nil {
-						panic(err)
-					}
-
-					// Remove duplicate output
-					delete(kopsJSON["output"].(map[string]interface{}), "cluster_name")
-
-					// Remove providers from generated kops terraform
-					// See https://discuss.hashicorp.com/t/terraform-v0-13-0-beta-program/9066/9
-					delete(kopsJSON, "provider")
-
-					// Remove duplicate terraform
-					delete(kopsJSON, "terraform")
-
-					// Get terraform json output
-					terraformOutputJSON, err := getTerraformOutputJSON()
-					if err != nil {
-						panic(err)
-					}
-
-					kopsResources := kopsJSON["resource"].(map[string]interface{})
-
-					// Enable root volume encryption
-					// kops <= 1.19
-					if kopsResources["aws_launch_configuration"] != nil {
-						launchConfigs := kopsResources["aws_launch_configuration"].(map[string]interface{})
-						for _, lc := range launchConfigs {
-							rootVolume := lc.(map[string]interface{})["root_block_device"].(map[string]interface{})
-							rootVolume["encrypted"] = true
-							if terraformOutputJSON["encryption_key_arn"] != nil {
-								rootVolume["kms_key_id"] = terraformOutputJSON["encryption_key_arn"]
+					kopsTfHclFile := path.Join(localStateDir, "tf", "kubernetes.tf")
+					kopsTfJsonFile := path.Join(localStateDir, "tf", "kubernetes.tf.json")
+					// Kops >= 1.23 does not support terraform json output
+					if fileExists(kopsTfHclFile) {
+						// Remove the old generated terraform json if it still exists
+						if fileExists(kopsTfJsonFile) {
+							if err = os.Remove(kopsTfJsonFile); err != nil {
+								panic(err)
 							}
 						}
-					}
 
-					// Enable root volume encryption
-					// kops >= 1.20
-					if kopsResources["aws_launch_template"] != nil {
-						launchTemplates := kopsResources["aws_launch_template"].(map[string]interface{})
-						for _, lt := range launchTemplates {
-							blockDeviceMappings := lt.(map[string]interface{})["block_device_mappings"].([]interface{})
-							for _, bd := range blockDeviceMappings {
-								ebs := bd.(map[string]interface{})["ebs"].([]interface{})
-								for _, vol := range ebs {
-									volume := vol.(map[string]interface{})
-									volume["encrypted"] = true
-									if terraformOutputJSON["encryption_key_arn"] != nil {
-										volume["kms_key_id"] = terraformOutputJSON["encryption_key_arn"]
+						// Sad hackery 😞
+						file, err := os.OpenFile(kopsTfHclFile, os.O_RDWR, 0644)
+						if err != nil {
+							Logger.Fatal(err)
+						}
+						defer file.Close()
+
+						var kopsHCLBytes []byte
+						var terminatingLine *[]byte
+						scanner := bufio.NewScanner(file)
+
+						for scanner.Scan() {
+							line := scanner.Bytes()
+
+							// Remove duplicate output
+							if bytes.Equal(line, []byte(`output "cluster_name" {`)) {
+								terminatingLine = NewByteSlice([]byte(`}`))
+							}
+
+							// Remove duplicate aws provider
+							if bytes.Equal(line, []byte(`provider "aws" {`)) {
+								terminatingLine = NewByteSlice([]byte(`}`))
+							}
+
+							// Remove duplicate terraform directive
+							if bytes.Equal(line, []byte(`terraform {`)) {
+								terminatingLine = NewByteSlice([]byte(`}`))
+							}
+
+							if terminatingLine == nil {
+								line = append(line, []byte("\n")...)
+								kopsHCLBytes = append(kopsHCLBytes, line...)
+							} else if bytes.Equal(line, *terminatingLine) {
+								terminatingLine = nil
+							}
+						}
+
+						if err := scanner.Err(); err != nil {
+							Logger.Fatal(err)
+						}
+
+						// Move cursor back to beginning
+						if _, err := file.Seek(0, 0); err != nil {
+							Logger.Fatal(err)
+						}
+
+						// Truncate the file
+						if err := file.Truncate(0); err != nil {
+							Logger.Fatal(err)
+						}
+
+						// Replace file contents
+						if _, err := file.Write(kopsHCLBytes); err != nil {
+							Logger.Fatal(err)
+						}
+					} else {
+						// Read the generated kops terraform
+						kopsJSONBytes, err := ioutil.ReadFile(kopsTfJsonFile)
+						if err != nil {
+							panic(err)
+						}
+
+						var kopsJSON map[string]interface{}
+						err = json.Unmarshal(kopsJSONBytes, &kopsJSON)
+						if err != nil {
+							panic(err)
+						}
+
+						// Remove duplicate output
+						delete(kopsJSON["output"].(map[string]interface{}), "cluster_name")
+
+						// Remove providers from generated kops terraform
+						// See https://discuss.hashicorp.com/t/terraform-v0-13-0-beta-program/9066/9
+						delete(kopsJSON, "provider")
+
+						// Remove duplicate terraform
+						delete(kopsJSON, "terraform")
+
+						// Get terraform json output
+						terraformOutputJSON, err := getTerraformOutputJSON()
+						if err != nil {
+							panic(err)
+						}
+
+						kopsResources := kopsJSON["resource"].(map[string]interface{})
+
+						// Enable root volume encryption
+						// kops <= 1.19
+						if kopsResources["aws_launch_configuration"] != nil {
+							launchConfigs := kopsResources["aws_launch_configuration"].(map[string]interface{})
+							for _, lc := range launchConfigs {
+								rootVolume := lc.(map[string]interface{})["root_block_device"].(map[string]interface{})
+								rootVolume["encrypted"] = true
+								if terraformOutputJSON["encryption_key_arn"] != nil {
+									rootVolume["kms_key_id"] = terraformOutputJSON["encryption_key_arn"]
+								}
+							}
+						}
+
+						// Enable root volume encryption
+						// kops >= 1.20
+						if kopsResources["aws_launch_template"] != nil {
+							launchTemplates := kopsResources["aws_launch_template"].(map[string]interface{})
+							for _, lt := range launchTemplates {
+								blockDeviceMappings := lt.(map[string]interface{})["block_device_mappings"].([]interface{})
+								for _, bd := range blockDeviceMappings {
+									ebs := bd.(map[string]interface{})["ebs"].([]interface{})
+									for _, vol := range ebs {
+										volume := vol.(map[string]interface{})
+										volume["encrypted"] = true
+										if terraformOutputJSON["encryption_key_arn"] != nil {
+											volume["kms_key_id"] = terraformOutputJSON["encryption_key_arn"]
+										}
 									}
 								}
 							}
 						}
-					}
 
-					// Remove extraneous type property
-					// kops >= 1.22
-					if kopsResources["aws_route53_record"] != nil {
-						route53Records := kopsResources["aws_route53_record"].(map[string]interface{})
-						for _, r := range route53Records {
-							if r.(map[string]interface{})["alias"] != nil {
-								alias := r.(map[string]interface{})["alias"].(map[string]interface{})
-								delete(alias, "type")
+						// Remove extraneous type property
+						// kops >= 1.22
+						if kopsResources["aws_route53_record"] != nil {
+							route53Records := kopsResources["aws_route53_record"].(map[string]interface{})
+							for _, r := range route53Records {
+								if r.(map[string]interface{})["alias"] != nil {
+									alias := r.(map[string]interface{})["alias"].(map[string]interface{})
+									delete(alias, "type")
+								}
 							}
 						}
-					}
 
-					kopsJSONBytes, err = json.MarshalIndent(kopsJSON, "", "  ")
-					if err != nil {
-						panic(err)
-					}
+						kopsJSONBytes, err = json.MarshalIndent(kopsJSON, "", "  ")
+						if err != nil {
+							panic(err)
+						}
 
-					err = ioutil.WriteFile(kopsOutputFile, kopsJSONBytes, 0644)
-					if err != nil {
-						panic(err)
+						err = ioutil.WriteFile(kopsTfJsonFile, kopsJSONBytes, 0644)
+						if err != nil {
+							panic(err)
+						}
 					}
 				})
 
