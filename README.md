@@ -6,9 +6,9 @@
 
 ## Prerequisites
 
-- [`kops@>=1.18`](https://kubernetes.io/docs/setup/production-environment/tools/kops/)
-- [`kubectl@>=1.18`](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
-- [`terraform@>=0.13`](https://www.terraform.io/downloads.html)
+- [`kops@>=1.22`](https://kubernetes.io/docs/setup/production-environment/tools/kops/)
+- [`kubectl@>=1.23`](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
+- [`terraform@>=1.3.0`](https://www.terraform.io/downloads.html)
 
 ## Installation
 
