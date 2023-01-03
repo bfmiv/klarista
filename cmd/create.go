@@ -25,6 +25,7 @@ var createCmd = &cobra.Command{
 		localStateDir := path.Join(os.TempDir(), name)
 		stateBucketName := strings.ReplaceAll(name, ".", "-") + "-state"
 
+		always, _ := cmd.Flags().GetBool("always")
 		fast, _ := cmd.Flags().GetBool("fast")
 		yes, _ := cmd.Flags().GetBool("yes")
 		autoFlags := getAutoFlags(yes)
@@ -44,14 +45,18 @@ var createCmd = &cobra.Command{
 			inputs = getInitialInputs(localStateDir)
 		}
 
-		writeAssets := createAssetWriter(pwd, localStateDir, assets)
-		processInputs := createInputProcessor(pwd, localStateDir, assets, writeAssets)
+		assetWriter := NewAssetWriter(pwd, localStateDir, assets)
+		inputProcessor := NewInputProcessor(assetWriter)
+
+		assetWriter.Digest("{tf_vars,tf_state}/*")
+		inputIds := inputProcessor.Digest(inputs)
+
+		if !always && !inputProcessor.Changed() {
+			Logger.Infof(`No changes to apply for cluster "%s". Use --always to override`, name)
+			return
+		}
 
 		Logger.Infof(`Applying changes to cluster "%s"`, name)
-
-		writeAssets("{tf_vars,tf_state}/*")
-
-		inputIds := processInputs(inputs)
 
 		setAwsEnv(localStateDir, inputIds)
 
@@ -72,13 +77,13 @@ var createCmd = &cobra.Command{
 			})
 		})
 
-		writeAssets()
+		assetWriter.Digest()
 
 		Logger.Infof(`Writing output to "s3://%s"`, stateBucketName)
 
 		useRemoteState(name, stateBucketName, true, true, func() {
 			useWorkDir("tf", func() {
-				writeAssets()
+				assetWriter.Digest()
 
 				shell("terraform", "init", "-upgrade")
 
@@ -106,7 +111,7 @@ var createCmd = &cobra.Command{
 				}
 
 				assets.AddBytes(path.Join("tf", "output.json"), terraformOutputBytes)
-				writeAssets()
+				assetWriter.Digest()
 
 				awsIamClusterAdminRoleArn := terraformOutput["aws_iam_cluster_admin_role_arn"].(string)
 
@@ -385,7 +390,7 @@ var createCmd = &cobra.Command{
 				}
 
 				assets.AddBytes(path.Join("tf", "output.json"), terraformOutputBytes)
-				writeAssets()
+				assetWriter.Digest()
 
 				if isNewCluster {
 					Logger.Info("Waiting 3m for the cluster to come online")
@@ -499,11 +504,14 @@ var createCmd = &cobra.Command{
 				}
 
 				assets.AddBytes("kubeconfig.yaml", kubeconfigBytes)
-				writeAssets("kubeconfig.yaml")
+				assetWriter.Digest("kubeconfig.yaml")
 
 				// Build environment file
 				assets.AddBytes(".env", generateDefaultEnvironmentFile(name))
-				writeAssets(".env")
+				assetWriter.Digest(".env")
+
+				// Commit input checksum
+				inputProcessor.Commit()
 			})
 		})
 
@@ -543,6 +551,7 @@ var createCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(createCmd)
+	createCmd.Flags().Bool("always", false, "Always try to apply changes, even if the checksum has not changed")
 	createCmd.Flags().Bool("fast", false, "Apply updates as quickly as possible. This is not safe in production")
 	createCmd.Flags().Bool("yes", false, "Skip confirmation")
 	createCmd.Flags().String("client-authentication-api-version", "client.authentication.k8s.io/v1beta1", "Version of the Kubernetes Client Authentication API to use when generating the Kubeconfig file")
