@@ -3,8 +3,10 @@ package cmd
 import (
 	"archive/tar"
 	"bytes"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -34,60 +36,158 @@ import (
 // Version - klarista cli version
 var Version = "latest"
 
-// AssetWriterFunc - Asset writer function
-type AssetWriterFunc = func(args ...interface{})
+// AssetWriter - Asset writer strict
+type AssetWriter struct {
+	box           *packr.Box
+	localStateDir string
+	pwd           string
+	politeAssets  map[string]bool
+}
 
-func createAssetWriter(pwd, localStateDir string, box *packr.Box) AssetWriterFunc {
-	// These assets will only be written if they do not already exist
-	politeAssets := map[string]bool{
-		"kubeconfig.yaml":            true,
-		"tf/terraform.tfstate":       true,
-		"tf_state/terraform.tfstate": true,
-		"tf_vars/terraform.tfstate":  true,
+func NewAssetWriter(pwd, localStateDir string, box *packr.Box) *AssetWriter {
+	return &AssetWriter{
+		box:           box,
+		localStateDir: localStateDir,
+		pwd:           pwd,
+		politeAssets: map[string]bool{
+			"kubeconfig.yaml":            true,
+			"tf/terraform.tfstate":       true,
+			"tf_state/terraform.tfstate": true,
+			"tf_vars/terraform.tfstate":  true,
+		},
+	}
+}
+
+func (w *AssetWriter) Digest(args ...interface{}) {
+	var pattern string
+	if len(args) == 1 {
+		pattern = args[0].(string)
 	}
 
-	return func(args ...interface{}) {
-		var pattern string
-		if len(args) == 1 {
-			pattern = args[0].(string)
-		}
+	var g glob.Glob
+	if pattern != "" {
+		g = glob.MustCompile(pattern)
+	}
 
-		var g glob.Glob
-		if pattern != "" {
-			g = glob.MustCompile(pattern)
-		}
+	useWorkDir(w.pwd, func() {
+		for _, file := range w.box.List() {
+			fp := path.Join(w.localStateDir, file)
 
-		useWorkDir(pwd, func() {
-			for _, file := range box.List() {
-				fp := path.Join(localStateDir, file)
-
-				if g != nil && !g.Match(file) {
-					Logger.Debugf("Skipping asset %s that does not match glob %s", file, pattern)
-					continue
-				}
-
-				if politeAssets[file] && fileExists(fp) {
-					// The file exists; continue
-					continue
-				}
-
-				Logger.Debugf("Writing asset %s", file)
-
-				data, err := box.Find(file)
-				if err != nil {
-					panic(err)
-				}
-
-				if err = os.MkdirAll(path.Dir(fp), 0755); err != nil {
-					panic(err)
-				}
-
-				if err = ioutil.WriteFile(fp, data, 0644); err != nil {
-					panic(err)
-				}
+			if g != nil && !g.Match(file) {
+				Logger.Debugf("Skipping asset %s that does not match glob %s", file, pattern)
+				continue
 			}
-		})
+
+			if w.politeAssets[file] && fileExists(fp) {
+				// The file exists; continue
+				continue
+			}
+
+			Logger.Debugf("Writing asset %s", file)
+
+			data, err := w.box.Find(file)
+			if err != nil {
+				panic(err)
+			}
+
+			if err = os.MkdirAll(path.Dir(fp), 0755); err != nil {
+				panic(err)
+			}
+
+			if err = ioutil.WriteFile(fp, data, 0644); err != nil {
+				panic(err)
+			}
+		}
+	})
+}
+
+// InputProcessor - Input processor struct
+type InputProcessor struct {
+	checksum *[]byte
+	hash     hash.Hash
+	writer   *AssetWriter
+}
+
+func NewInputProcessor(writer *AssetWriter) *InputProcessor {
+	p := &InputProcessor{
+		checksum: nil,
+		hash:     sha1.New(),
+		writer:   writer,
 	}
+	p.init()
+	return p
+}
+
+func (p *InputProcessor) init() {
+	checksumFilePath := path.Join(p.writer.localStateDir, ".checksum")
+	if fileExists(checksumFilePath) {
+		checksumBytes, err := ioutil.ReadFile(checksumFilePath)
+		if err != nil {
+			panic(err)
+		}
+		p.checksum = &checksumBytes
+		Logger.Debugf("Got existing checksum from state directory %x", checksumBytes)
+	}
+}
+
+func (p *InputProcessor) Changed() bool {
+	if p.checksum == nil {
+		return true
+	}
+	return bytes.Compare(p.hash.Sum(nil), *p.checksum) != 0
+}
+
+func (p *InputProcessor) Commit() {
+	p.writer.box.AddBytes(
+		".checksum",
+		p.hash.Sum(nil),
+	)
+	p.writer.Digest(".checksum")
+}
+
+func (p *InputProcessor) Digest(inputPaths []string) []string {
+	inputIds := []string{}
+	p.hash.Reset()
+	p.hash.Write([]byte(Version))
+
+	useWorkDir(p.writer.localStateDir, func() {
+		for i, input := range inputPaths {
+			if !filepath.IsAbs(input) {
+				input = path.Join(p.writer.pwd, input)
+			}
+			if _, err := os.Stat(input); err != nil {
+				Logger.Errorf("Input file %s does not exist", input)
+				continue
+			}
+
+			inputBytes, err := ioutil.ReadFile(input)
+			if err != nil {
+				panic(err)
+			}
+
+			_, err = p.hash.Write(inputBytes)
+			if err != nil {
+				panic(err)
+			}
+
+			inputIds = append(inputIds, fmt.Sprintf("%03d.tfvars", i))
+
+			for _, dir := range []string{"tf_vars", "tf_state", "tf"} {
+				p.writer.box.AddBytes(
+					path.Join(dir, "inputs", inputIds[i]),
+					inputBytes,
+				)
+			}
+		}
+
+		p.writer.Digest("*/inputs/*")
+	})
+
+	if len(inputIds) == 0 {
+		Logger.Fatalf(`No input files were found. You must explicitly pass "--input <file>"`)
+	}
+
+	return inputIds
 }
 
 func fileExists(fp string) bool {
@@ -96,49 +196,6 @@ func fileExists(fp string) bool {
 		return false
 	}
 	return true
-}
-
-// InputProcessorFunc - Input processor function
-type InputProcessorFunc = func([]string) []string
-
-func createInputProcessor(pwd, localStateDir string, box *packr.Box, writeAssets AssetWriterFunc) InputProcessorFunc {
-	return func(inputPaths []string) []string {
-		inputIds := []string{}
-		useWorkDir(localStateDir, func() {
-			for i, input := range inputPaths {
-				if !filepath.IsAbs(input) {
-					input = path.Join(pwd, input)
-				}
-				if _, err := os.Stat(input); err != nil {
-					Logger.Errorf("Input file %s does not exist", input)
-					continue
-				}
-
-				inputBytes, err := ioutil.ReadFile(input)
-				if err != nil {
-					panic(err)
-				}
-				inputIds = append(inputIds, fmt.Sprintf("%03d.tfvars", i))
-				box.AddBytes(
-					path.Join("tf_vars", "inputs", inputIds[i]),
-					inputBytes,
-				)
-				box.AddBytes(
-					path.Join("tf_state", "inputs", inputIds[i]),
-					inputBytes,
-				)
-				box.AddBytes(
-					path.Join("tf", "inputs", inputIds[i]),
-					inputBytes,
-				)
-			}
-			writeAssets("*/inputs/*")
-		})
-		if len(inputIds) == 0 {
-			Logger.Fatalf(`No input files were found. You must explicitly pass "--input <file>"`)
-		}
-		return inputIds
-	}
 }
 
 func getAutoFlags(override bool) string {

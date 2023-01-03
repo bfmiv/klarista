@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-CONTAINER_ID=$(basename $(cat /proc/1/cpuset))
+CONTAINER_ID="$HOSTNAME"
 
 echo $'
 set -euo pipefail

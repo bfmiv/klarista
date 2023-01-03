@@ -34,12 +34,12 @@ var statePushCmd = &cobra.Command{
 			inputs = getInitialInputs(localStateDir)
 		}
 
-		writeAssets := createAssetWriter(pwd, localStateDir, assets)
-		processInputs := createInputProcessor(pwd, localStateDir, assets, writeAssets)
+		assetWriter := NewAssetWriter(pwd, localStateDir, assets)
+		inputProcessor := NewInputProcessor(assetWriter)
 
-		writeAssets("tf_vars/*")
+		assetWriter.Digest("tf_vars/*")
 
-		inputIds := processInputs(inputs)
+		inputIds := inputProcessor.Digest(inputs)
 
 		setAwsEnv(localStateDir, inputIds)
 
